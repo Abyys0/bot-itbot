@@ -1,0 +1,7 @@
+.env
+tickets.json
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.DS_Store
