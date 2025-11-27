@@ -702,10 +702,30 @@ async def ticket_info(ctx):
     await ctx.send(embed=embed)
 
 
+# ==================== ERROR HANDLERS ====================
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """Handler para erros gerais"""
+    logger.error(f"Erro no evento {event}", exc_info=True)
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Handler para erros de comandos"""
+    if isinstance(error, commands.CommandNotFound):
+        return  # Ignora comandos não encontrados
+    
+    logger.error(f"Erro no comando {ctx.command}: {error}", exc_info=True)
+    
+    try:
+        await ctx.send(f"❌ Ocorreu um erro: {str(error)}")
+    except:
+        pass  # Se não conseguir enviar mensagem, ignora
+
 # ==================== MAIN ====================
 
 def main():
-    """Função principal para executar o bot"""
+    """Função principal para executar o bot com auto-restart"""
     if not BOT_TOKEN or BOT_TOKEN == "seu_token_aqui":
         print("❌ ERRO: BOT_TOKEN não configurado!")
         print("Configure o arquivo .env com seu token do Discord")
@@ -721,7 +741,20 @@ def main():
         return
     
     print("🚀 Iniciando bot iBot...")
-    bot.run(BOT_TOKEN)
+    
+    # Loop de auto-restart em caso de erro
+    while True:
+        try:
+            bot.run(BOT_TOKEN)
+        except KeyboardInterrupt:
+            print("\n⚠️ Bot encerrado pelo usuário")
+            break
+        except Exception as e:
+            logger.error(f"❌ Bot crashou: {e}", exc_info=True)
+            print(f"⚠️ Bot crashou! Reiniciando em 5 segundos...")
+            import time
+            time.sleep(5)
+            print("🔄 Reiniciando bot...")
 
 
 if __name__ == "__main__":
