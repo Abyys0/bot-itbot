@@ -233,14 +233,28 @@ class TicketPanelView(discord.ui.View):
     
     @discord.ui.button(label="Notificar Equipe", style=discord.ButtonStyle.primary, emoji="🔔", row=0)
     async def notify_staff(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Botão para notificar a equipe - qualquer membro pode usar"""
+        """Botão para notificar a equipe - qualquer pessoa no ticket pode usar"""
         
-        # Verifica se é o criador do ticket
-        if interaction.user.id != self.user_id:
+        # Verifica se o usuário tem acesso ao canal (está no ticket)
+        channel = interaction.channel
+        if not channel or not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description="Este comando só pode ser usado em canais de ticket!",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+            return
+        
+        # Verifica se o usuário pode ver o canal (tem permissão para estar no ticket)
+        permissions = channel.permissions_for(interaction.user)
+        if not permissions.read_messages:
             await interaction.response.send_message(
                 embed=discord.Embed(
                     title="❌ Sem Permissão",
-                    description="Apenas o criador do ticket pode notificar a equipe!",
+                    description="Você não tem permissão para usar este ticket!",
                     color=COLORS["error"]
                 ),
                 ephemeral=True
@@ -254,11 +268,17 @@ class TicketPanelView(discord.ui.View):
         embed = discord.Embed(
             title="🔔 Equipe Notificada",
             description=f"{interaction.user.mention} está solicitando atenção da equipe!",
-            color=COLORS["info"]
+            color=COLORS["info"],
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(
+            name="📍 Canal",
+            value=f"{channel.mention}",
+            inline=False
         )
         
         await interaction.response.send_message(
-            content=staff_mentions,
+            content=f"🚨 **ATENÇÃO EQUIPE!** {staff_mentions}",
             embed=embed
         )
     

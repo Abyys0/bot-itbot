@@ -3,13 +3,24 @@ from flask_cors import CORS
 import json
 import os
 from datetime import datetime
-from ticket_manager import TicketManager
 
 app = Flask(__name__)
 CORS(app)
 
-# Inicializa o gerenciador de tickets
-ticket_manager = TicketManager()
+# Funções para gerenciar tickets sem bot
+def load_tickets():
+    """Carrega tickets do arquivo JSON"""
+    try:
+        if os.path.exists('tickets.json'):
+            with open('tickets.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+def get_all_tickets():
+    """Retorna todos os tickets"""
+    return load_tickets()
 
 # ==================== ENDPOINTS ====================
 
@@ -22,9 +33,9 @@ def health():
 def get_stats():
     """Retorna estatísticas dos tickets"""
     try:
-        tickets = ticket_manager.get_all_tickets()
+        tickets = get_all_tickets()
         total = len(tickets)
-        open_tickets = len([t for t in tickets if t['status'] == 'open'])
+        open_tickets = len([t for t in tickets if t.get('status') == 'open'])
         closed_tickets = total - open_tickets
         open_percentage = round((open_tickets / total * 100) if total > 0 else 0)
         
@@ -44,7 +55,7 @@ def get_stats():
 def get_tickets():
     """Retorna todos os tickets"""
     try:
-        tickets = ticket_manager.get_all_tickets()
+        tickets = get_all_tickets()
         return jsonify({'success': True, 'tickets': tickets}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
