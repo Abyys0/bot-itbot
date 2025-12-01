@@ -17,13 +17,16 @@ import threading
 import os
 
 # Flask app que serve tanto keep-alive quanto painel
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
 bot_instance = None
 
 # Rota principal - serve o painel web
 @app.route('/')
 def home():
-    return send_from_directory('.', 'index.html')
+    try:
+        return send_from_directory(os.getcwd(), 'index.html')
+    except Exception as e:
+        return f"Erro ao carregar painel: {str(e)}", 500
 
 @app.route('/health')
 def health():
