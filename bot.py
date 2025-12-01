@@ -10,6 +10,7 @@ from backup_manager import BackupManager
 from loja_builder import LojaBuilder
 import logging
 import asyncio
+from datetime import datetime
 
 # Keep-alive e painel web integrado
 from flask import Flask, jsonify, request, send_from_directory
@@ -29,6 +30,85 @@ def get_bot_instance():
 
 # Registrar rotas de moderação
 register_moderation_routes(app, get_bot_instance)
+
+# ==================== ROTAS DE CONTAS ====================
+
+@app.route('/api/accounts', methods=['GET'])
+def get_accounts():
+    """Lista todas as contas"""
+    try:
+        if os.path.exists('accounts.json'):
+            with open('accounts.json', 'r', encoding='utf-8') as f:
+                accounts = json.load(f)
+        else:
+            accounts = []
+        return jsonify({'success': True, 'accounts': accounts})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/accounts/add', methods=['POST'])
+def add_account():
+    """Adiciona uma nova conta"""
+    try:
+        data = request.get_json()
+        title = data.get('title')
+        description = data.get('description')
+        price = data.get('price')
+        image_url = data.get('image_url', '')
+        info = data.get('info', '')
+        
+        if not title or not description or not price:
+            return jsonify({'success': False, 'error': 'Campos obrigatórios faltando'})
+        
+        # Carregar contas existentes
+        if os.path.exists('accounts.json'):
+            with open('accounts.json', 'r', encoding='utf-8') as f:
+                accounts = json.load(f)
+        else:
+            accounts = []
+        
+        # Criar nova conta
+        new_account = {
+            'id': len(accounts) + 1,
+            'title': title,
+            'description': description,
+            'price': price,
+            'image_url': image_url,
+            'info': info,
+            'status': 'available',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        accounts.append(new_account)
+        
+        # Salvar
+        with open('accounts.json', 'w', encoding='utf-8') as f:
+            json.dump(accounts, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'account': new_account})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
+def delete_account(account_id):
+    """Deleta uma conta"""
+    try:
+        if os.path.exists('accounts.json'):
+            with open('accounts.json', 'r', encoding='utf-8') as f:
+                accounts = json.load(f)
+        else:
+            return jsonify({'success': False, 'error': 'Nenhuma conta encontrada'})
+        
+        # Filtrar conta
+        accounts = [a for a in accounts if a.get('id') != account_id]
+        
+        # Salvar
+        with open('accounts.json', 'w', encoding='utf-8') as f:
+            json.dump(accounts, f, ensure_ascii=False, indent=2)
+        
+        return jsonify({'success': True, 'message': 'Conta deletada'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 # Rota principal - serve o painel web
 @app.route('/')
