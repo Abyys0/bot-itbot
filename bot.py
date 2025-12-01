@@ -32,6 +32,59 @@ def home():
 def health():
     return "OK"
 
+# API para enviar anúncios
+@app.route('/api/announcement/send', methods=['POST'])
+def send_announcement():
+    """Envia um anúncio no canal configurado"""
+    try:
+        from config import ANNOUNCEMENTS_CHANNEL_ID
+        
+        if not bot_instance:
+            return jsonify({'success': False, 'error': 'Bot não está conectado'}), 503
+        
+        data = request.get_json()
+        message = data.get('message')
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Mensagem é obrigatória'}), 400
+        
+        if ANNOUNCEMENTS_CHANNEL_ID == 0:
+            return jsonify({'success': False, 'error': 'Canal de anúncios não configurado'}), 400
+        
+        async def post_announcement():
+            try:
+                channel = bot_instance.get_channel(ANNOUNCEMENTS_CHANNEL_ID)
+                if not channel:
+                    return False, "Canal de anúncios não encontrado"
+                
+                embed = discord.Embed(
+                    title="📢 Anúncio Importante",
+                    description=message,
+                    color=0x3498db,
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.set_footer(text="Equipe iBot")
+                
+                await channel.send(embed=embed)
+                return True, "Anúncio enviado com sucesso!"
+            except Exception as e:
+                return False, str(e)
+        
+        try:
+            loop = bot_instance.loop
+            future = asyncio.run_coroutine_threadsafe(post_announcement(), loop)
+            success, result = future.result(timeout=10)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+        
+        if success:
+            return jsonify({'success': True, 'message': result}), 200
+        else:
+            return jsonify({'success': False, 'error': result}), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
