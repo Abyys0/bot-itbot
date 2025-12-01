@@ -944,6 +944,59 @@ def close_ticket_panel(ticket_id):
     """Fecha ticket via painel"""
     return api_close_ticket(ticket_id)
 
+@app.route('/api/ticket/create', methods=['POST'])
+def create_ticket_panel():
+    """Cria um novo ticket via painel"""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        reason = data.get('reason', 'Criado via painel web')
+        
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id é obrigatório'}), 400
+        
+        # Validar se é um ID numérico válido
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'user_id deve ser um número válido'}), 400
+        
+        # Criar o ticket
+        async def create_ticket():
+            guild = bot_instance.get_guild(GUILD_ID)
+            if not guild:
+                return False, "Servidor não encontrado"
+            
+            # Busca o usuário
+            user = guild.get_member(user_id)
+            if not user:
+                return False, f"Usuário com ID {user_id} não encontrado no servidor"
+            
+            # Cria o ticket usando o sistema existente
+            ticket_data = ticket_manager.create_ticket(str(user_id), reason)
+            
+            if ticket_data:
+                return True, f"Ticket #{ticket_data.get('number')} criado com sucesso para {user.display_name}"
+            else:
+                return False, "Erro ao criar ticket no sistema"
+        
+        # Executa a função assíncrona
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        success, result = loop.run_until_complete(create_ticket())
+        loop.close()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': result
+            }), 201
+        else:
+            return jsonify({'success': False, 'error': result}), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 def run_web_server():
     """Executa o servidor web em thread separada"""
     app.run(host='0.0.0.0', port=8080, debug=False)
