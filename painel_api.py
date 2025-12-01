@@ -43,6 +43,26 @@ def load_tickets():
     except Exception:
         return []
 
+# Funções para gerenciar contas
+def load_accounts():
+    """Carrega contas do arquivo JSON"""
+    try:
+        if os.path.exists('accounts.json'):
+            with open('accounts.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except Exception:
+        return []
+
+def save_accounts(accounts):
+    """Salva contas no arquivo JSON"""
+    try:
+        with open('accounts.json', 'w', encoding='utf-8') as f:
+            json.dump(accounts, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
 def get_all_tickets():
     """Retorna todos os tickets (tenta API primeiro, depois fallback)"""
     # Tenta buscar via API do bot
@@ -216,6 +236,145 @@ def serve_index():
         </body>
         </html>
         ''', 404
+
+# ==================== TRATAMENTO DE ERROS ====================
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'success': False, 'error': 'Endpoint não encontrado'}), 404
+
+# ==================== ENDPOINTS DE ANÚNCIOS ====================
+
+@app.route('/api/announcement/send', methods=['POST'])
+def send_announcement():
+    """Envia um anúncio para o canal do Discord"""
+    try:
+        data = request.get_json()
+        message = data.get('message')
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Mensagem é obrigatória'}), 400
+        
+        result = call_bot_api('/announcement/send', 'POST', {'message': message})
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'Anúncio enviado com sucesso!'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao enviar anúncio')
+            }), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== ENDPOINTS DE CONTAS ====================
+
+@app.route('/api/accounts', methods=['GET'])
+def get_accounts():
+    """Retorna todas as contas disponíveis"""
+    try:
+        accounts = load_accounts()
+        return jsonify({'success': True, 'accounts': accounts}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/account/add', methods=['POST'])
+def add_account():
+    """Adiciona uma nova conta e posta no Discord"""
+    try:
+        data = request.get_json()
+        
+        # Validações
+        required_fields = ['title', 'description', 'price']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'success': False, 'error': f'{field} é obrigatório'}), 400
+        
+        accounts = load_accounts()
+        
+        # Cria nova conta
+        account_id = f"account_{len(accounts) + 1}"
+        new_account = {
+            'id': account_id,
+            'title': data['title'],
+            'description': data['description'],
+            'price': data['price'],
+            'image_url': data.get('image_url', ''),
+            'additional_info': data.get('additional_info', ''),
+            'created_at': datetime.now().isoformat(),
+            'available': True
+        }
+        
+        accounts.append(new_account)
+        save_accounts(accounts)
+        
+        # Envia para o Discord
+        result = call_bot_api('/account/post', 'POST', new_account)
+        
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': 'Conta adicionada e anunciada no Discord!',
+                'account': new_account
+            }), 201
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro ao postar no Discord')
+            }), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/account/<account_id>', methods=['DELETE'])
+def delete_account(account_id):
+    """Remove uma conta"""
+    try:
+        accounts = load_accounts()
+        accounts = [acc for acc in accounts if acc['id'] != account_id]
+        
+        if save_accounts(accounts):
+            return jsonify({
+                'success': True,
+                'message': 'Conta removida com sucesso!'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Erro ao salvar alterações'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/account/<account_id>/toggle', methods=['POST'])
+def toggle_account_availability(account_id):
+    """Alterna disponibilidade de uma conta"""
+    try:
+        accounts = load_accounts()
+        
+        for account in accounts:
+            if account['id'] == account_id:
+                account['available'] = not account.get('available', True)
+                break
+        
+        if save_accounts(accounts):
+            return jsonify({
+                'success': True,
+                'message': 'Disponibilidade atualizada!'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Erro ao salvar alterações'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ==================== TRATAMENTO DE ERROS ====================
 

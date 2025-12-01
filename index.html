@@ -370,6 +370,50 @@
             margin-bottom: 10px;
         }
 
+        /* ==================== CONTAS ====================*/
+        .account-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #00ff00;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .account-card:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .account-card.unavailable {
+            border-left-color: #999;
+            opacity: 0.7;
+        }
+
+        .account-card h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .account-card p {
+            margin: 5px 0;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .account-price {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #00ff00;
+            margin: 10px 0;
+        }
+
+        .account-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
         footer {
             background: #f5f5f5;
             padding: 20px;
@@ -392,6 +436,8 @@
                 <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
                 <button class="tab-btn" onclick="switchTab('tickets')">🎫 Tickets</button>
                 <button class="tab-btn" onclick="switchTab('criar')">➕ Criar Ticket</button>
+                <button class="tab-btn" onclick="switchTab('anuncios')">📢 Anúncios</button>
+                <button class="tab-btn" onclick="switchTab('contas')">🎮 Contas</button>
                 <button class="tab-btn" onclick="switchTab('funcoes')">⚙️ Funções</button>
             </div>
 
@@ -442,6 +488,58 @@
                 </div>
             </div>
 
+            <!-- TAB: Anúncios -->
+            <div id="tab-anuncios" class="tab-content">
+                <h2>📢 Enviar Anúncio</h2>
+                <div style="max-width: 600px;">
+                    <div class="form-group">
+                        <label>Mensagem do Anúncio</label>
+                        <textarea id="announcementMessage" rows="6" placeholder="Digite o anúncio que será enviado no canal do Discord..."></textarea>
+                    </div>
+                    <button class="btn-primary" onclick="sendAnnouncement()">📢 Enviar Anúncio</button>
+                    <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
+                        ℹ️ O anúncio será enviado no canal de anúncios do Discord.
+                    </p>
+                </div>
+            </div>
+
+            <!-- TAB: Contas -->
+            <div id="tab-contas" class="tab-content">
+                <h2>🎮 Gerenciar Contas</h2>
+                
+                <!-- Formulário para adicionar conta -->
+                <div style="max-width: 600px; margin-bottom: 30px; padding: 20px; background: #f9f9f9; border-radius: 10px;">
+                    <h3 style="margin-bottom: 15px;">➕ Adicionar Nova Conta</h3>
+                    <div class="form-group">
+                        <label>Título da Conta</label>
+                        <input type="text" id="accountTitle" placeholder="Ex: Conta Valorant Platina">
+                    </div>
+                    <div class="form-group">
+                        <label>Descrição</label>
+                        <textarea id="accountDescription" rows="4" placeholder="Descreva os detalhes da conta..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Preço</label>
+                        <input type="text" id="accountPrice" placeholder="Ex: R$ 150,00">
+                    </div>
+                    <div class="form-group">
+                        <label>URL da Imagem (opcional)</label>
+                        <input type="text" id="accountImage" placeholder="https://exemplo.com/imagem.png">
+                    </div>
+                    <div class="form-group">
+                        <label>Informações Adicionais (opcional)</label>
+                        <textarea id="accountInfo" rows="3" placeholder="Outras informações importantes..."></textarea>
+                    </div>
+                    <button class="btn-primary" onclick="addAccount()">🎮 Adicionar e Anunciar</button>
+                </div>
+
+                <!-- Lista de contas -->
+                <h3>📋 Contas Cadastradas</h3>
+                <div id="accountsContainer">
+                    <p>Carregando...</p>
+                </div>
+            </div>
+
             <!-- TAB: Funções -->
             <div id="tab-funcoes" class="tab-content">
                 <h2>⚙️ Funções do Painel</h2>
@@ -477,12 +575,14 @@
         window.addEventListener('load', function() {
             loadStats();
             loadTickets();
+            loadAccounts();
             populateFuncoes();
         });
 
         // Atualiza a cada 10 segundos
         setInterval(loadStats, 10000);
         setInterval(loadTickets, 10000);
+        setInterval(loadAccounts, 15000);
 
         // ==================== NAVEGAÇÃO ====================
         function switchTab(tabName) {
@@ -498,6 +598,8 @@
                 loadTickets();
             } else if (tabName === 'overview') {
                 loadStats();
+            } else if (tabName === 'contas') {
+                loadAccounts();
             }
         }
 
@@ -675,7 +777,9 @@
                 { emoji: '👥', titulo: 'Adicionar Membros', desc: 'Adicione usuários aos tickets' },
                 { emoji: '🔒', titulo: 'Fechar Tickets', desc: 'Encerre tickets com motivo' },
                 { emoji: '📊', titulo: 'Ver Estatísticas', desc: 'Acompanhe métricas em tempo real' },
-                { emoji: '🎤', titulo: 'Criar Call', desc: 'Crie canais de voz para conversa' }
+                { emoji: '🎤', titulo: 'Criar Call', desc: 'Crie canais de voz para conversa' },
+                { emoji: '📢', titulo: 'Enviar Anúncios', desc: 'Envie mensagens para todos verem' },
+                { emoji: '🎮', titulo: 'Gerenciar Contas', desc: 'Adicione e gerencie contas para venda' }
             ];
 
             const container = document.getElementById('tab-funcoes').querySelector('.funcoes-grid');
@@ -685,6 +789,165 @@
                     <p>${f.desc}</p>
                 </div>
             `).join('');
+        }
+
+        // ==================== ANÚNCIOS ====================
+        async function sendAnnouncement() {
+            const message = document.getElementById('announcementMessage').value;
+
+            if (!message) {
+                showToast('Digite uma mensagem!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/announcement/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Anúncio enviado com sucesso!', 'success');
+                    document.getElementById('announcementMessage').value = '';
+                } else {
+                    showToast(data.error || 'Erro ao enviar anúncio', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao enviar anúncio', 'error');
+            }
+        }
+
+        // ==================== CONTAS ====================
+        async function loadAccounts() {
+            try {
+                const response = await fetch('/api/accounts');
+                const data = await response.json();
+
+                if (data.success) {
+                    displayAccounts(data.accounts);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar contas:', error);
+            }
+        }
+
+        function displayAccounts(accounts) {
+            const container = document.getElementById('accountsContainer');
+            
+            if (accounts.length === 0) {
+                container.innerHTML = '<p>Nenhuma conta cadastrada</p>';
+                return;
+            }
+
+            container.innerHTML = accounts.map(account => `
+                <div class="account-card ${!account.available ? 'unavailable' : ''}">
+                    <h4>${account.title}</h4>
+                    <p><strong>Descrição:</strong> ${account.description}</p>
+                    <div class="account-price">${account.price}</div>
+                    ${account.additional_info ? `<p><strong>Info:</strong> ${account.additional_info}</p>` : ''}
+                    ${account.image_url ? `<p><strong>Imagem:</strong> <a href="${account.image_url}" target="_blank">Ver imagem</a></p>` : ''}
+                    <p style="font-size: 0.8em; color: #999;">ID: ${account.id} | Criado: ${new Date(account.created_at).toLocaleString('pt-BR')}</p>
+                    <p><strong>Status:</strong> ${account.available ? '✅ Disponível' : '❌ Indisponível'}</p>
+                    <div class="account-actions">
+                        <button class="btn-secondary" onclick="toggleAccountAvailability('${account.id}')">
+                            ${account.available ? '🚫 Marcar Indisponível' : '✅ Marcar Disponível'}
+                        </button>
+                        <button class="btn-close" onclick="deleteAccount('${account.id}')">🗑️ Remover</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function addAccount() {
+            const title = document.getElementById('accountTitle').value;
+            const description = document.getElementById('accountDescription').value;
+            const price = document.getElementById('accountPrice').value;
+            const image_url = document.getElementById('accountImage').value;
+            const additional_info = document.getElementById('accountInfo').value;
+
+            if (!title || !description || !price) {
+                showToast('Preencha os campos obrigatórios!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/account/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        description: description,
+                        price: price,
+                        image_url: image_url,
+                        additional_info: additional_info
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Conta adicionada e anunciada!', 'success');
+                    document.getElementById('accountTitle').value = '';
+                    document.getElementById('accountDescription').value = '';
+                    document.getElementById('accountPrice').value = '';
+                    document.getElementById('accountImage').value = '';
+                    document.getElementById('accountInfo').value = '';
+                    loadAccounts();
+                } else {
+                    showToast(data.error || 'Erro ao adicionar conta', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao adicionar conta', 'error');
+            }
+        }
+
+        async function deleteAccount(accountId) {
+            if (!confirm('Tem certeza que deseja remover esta conta?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/account/${accountId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Conta removida!', 'success');
+                    loadAccounts();
+                } else {
+                    showToast(data.error || 'Erro ao remover conta', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao remover conta', 'error');
+            }
+        }
+
+        async function toggleAccountAvailability(accountId) {
+            try {
+                const response = await fetch(`/api/account/${accountId}/toggle`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('Status atualizado!', 'success');
+                    loadAccounts();
+                } else {
+                    showToast(data.error || 'Erro ao atualizar status', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao atualizar status', 'error');
+            }
         }
 
         // ==================== UTILITÁRIOS ====================

@@ -6,6 +6,8 @@ from config import (
     STAFF_ROLE_IDS, GUILD_ID, BOT_PREFIX, COLORS
 )
 from ticket_manager import TicketManager
+from backup_manager import BackupManager
+from loja_builder import LojaBuilder
 import logging
 import asyncio
 
@@ -39,6 +41,8 @@ intents.members = True
 # Criando o bot
 bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
 ticket_manager = TicketManager(bot)
+backup_manager = BackupManager()
+loja_builder = LojaBuilder(bot)
 
 # ==================== MODAL PARA MOTIVO ====================
 
@@ -82,6 +86,78 @@ class AddMemberModal(discord.ui.Modal, title="Adicionar Membro"):
         await self.view_instance.process_add_member(interaction, self.member_id.value)
 
 # ==================== VIEWS (Botões) ====================
+
+class BuyAccountView(discord.ui.View):
+    """View com botão de compra de conta"""
+    
+    def __init__(self, account_id: str):
+        super().__init__(timeout=None)
+        self.account_id = account_id
+    
+    @discord.ui.button(label="Comprar Conta", style=discord.ButtonStyle.green, emoji="🛒")
+    async def buy_account(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Botão para comprar conta - abre ticket automaticamente"""
+        
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description="Servidor não encontrado!",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+            return
+        
+        try:
+            # Cria ticket automaticamente para compra
+            channel, result_msg = await create_ticket_channel(
+                guild, 
+                interaction.user, 
+                f"Interesse em comprar conta - ID: {self.account_id}"
+            )
+            
+            if channel:
+                # Envia mensagem efêmera para o usuário
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="✅ Ticket de Compra Criado",
+                        description=f"Seu ticket para compra da conta foi criado com sucesso!\n\nAcesse: {channel.mention}\n\nNossa equipe entrará em contato em breve.",
+                        color=COLORS["success"]
+                    ),
+                    ephemeral=True
+                )
+                
+                # Envia mensagem no ticket sobre a conta
+                await channel.send(
+                    embed=discord.Embed(
+                        title="🛒 Interesse em Compra de Conta",
+                        description=f"O usuário {interaction.user.mention} está interessado na conta **{self.account_id}**.\n\nNossa equipe irá ajudá-lo com o processo de compra.",
+                        color=COLORS["info"]
+                    )
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="❌ Erro",
+                        description=result_msg,
+                        color=COLORS["error"]
+                    ),
+                    ephemeral=True
+                )
+        
+        except Exception as e:
+            logger.error(f"Erro ao criar ticket de compra: {e}")
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description=f"Erro ao criar ticket: {str(e)}",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+
 
 class TicketCreateView(discord.ui.View):
     """View para criar um novo ticket"""
@@ -745,6 +821,488 @@ async def ticket_info(ctx):
     await ctx.send(embed=embed)
 
 
+# ==================== COMANDOS DE BACKUP ====================
+
+@bot.command(name="backup_loja")
+@commands.has_permissions(administrator=True)
+async def backup_loja(ctx):
+    """Cria um backup completo do servidor"""
+    
+    # Mensagem de progresso
+    progress_msg = await ctx.send(
+        embed=discord.Embed(
+            title="💾 Criando Backup...",
+            description="Por favor, aguarde. Isso pode levar alguns minutos...",
+            color=COLORS["info"]
+        )
+    )
+    
+    try:
+        # Cria o backup
+        success, filename, backup_data = await backup_manager.create_backup(ctx.guild)
+        
+        if success:
+            # Estatísticas do backup
+            stats = f"""
+            **📊 Estatísticas do Backup:**
+            
+            ✅ Backup criado com sucesso!
+            
+            📁 **Arquivo:** `{filename}`
+            👥 **Membros:** {backup_data['backup_info']['member_count']}
+            🎭 **Cargos:** {len(backup_data['roles'])}
+            📂 **Categorias:** {len(backup_data['categories'])}
+            📝 **Canais:** {len(backup_data['channels'])}
+            😀 **Emojis:** {len(backup_data['emojis'])}
+            
+            Para restaurar este backup, use:
+            `{BOT_PREFIX}restaurar_backup {filename}`
+            
+            Para ver todos os backups:
+            `{BOT_PREFIX}listar_backups`
+            """
+            
+            embed = discord.Embed(
+                title="✅ Backup Concluído!",
+                description=stats,
+                color=COLORS["success"],
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_footer(text=f"Backup realizado por {ctx.author.display_name}")
+            
+            await progress_msg.edit(embed=embed)
+            
+            logger.info(f"Backup criado por {ctx.author} ({ctx.author.id}): {filename}")
+        
+        else:
+            embed = discord.Embed(
+                title="❌ Erro ao Criar Backup",
+                description=f"Ocorreu um erro ao criar o backup:\n```{backup_data}```",
+                color=COLORS["error"]
+            )
+            await progress_msg.edit(embed=embed)
+    
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Erro Fatal",
+            description=f"```{str(e)}```",
+            color=COLORS["error"]
+        )
+        await progress_msg.edit(embed=embed)
+        logger.error(f"Erro ao criar backup: {e}")
+
+
+@bot.command(name="listar_backups")
+@commands.has_permissions(administrator=True)
+async def listar_backups(ctx):
+    """Lista todos os backups disponíveis"""
+    
+    backups = backup_manager.list_backups()
+    
+    if not backups:
+        embed = discord.Embed(
+            title="📦 Nenhum Backup Encontrado",
+            description="Ainda não há backups criados. Use `{BOT_PREFIX}backup_loja` para criar um.",
+            color=COLORS["warning"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title="📦 Backups Disponíveis",
+        description=f"Total de {len(backups)} backup(s) encontrado(s):",
+        color=COLORS["info"]
+    )
+    
+    for i, backup in enumerate(backups, 1):
+        created_date = backup['created_at'].split('T')[0]
+        created_time = backup['created_at'].split('T')[1].split('.')[0]
+        
+        embed.add_field(
+            name=f"{i}. {backup['guild_name']}",
+            value=f"📅 **Data:** {created_date}\n⏰ **Hora:** {created_time}\n👥 **Membros:** {backup['member_count']}\n📁 **Arquivo:** `{backup['filename']}`",
+            inline=False
+        )
+    
+    embed.set_footer(text=f"Use {BOT_PREFIX}restaurar_backup <nome_arquivo> para restaurar")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="restaurar_backup")
+@commands.has_permissions(administrator=True)
+async def restaurar_backup(ctx, filename: str = None, confirmar: str = None):
+    """Restaura um backup do servidor"""
+    
+    if not filename:
+        embed = discord.Embed(
+            title="❌ Arquivo Não Especificado",
+            description=f"Use: `{BOT_PREFIX}restaurar_backup <nome_arquivo> confirmar`\n\nPara ver backups disponíveis: `{BOT_PREFIX}listar_backups`",
+            color=COLORS["error"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if confirmar != "confirmar":
+        embed = discord.Embed(
+            title="⚠️ Confirmação Necessária",
+            description=f"**ATENÇÃO:** Restaurar um backup pode sobrescrever canais, cargos e categorias existentes!\n\nPara confirmar, use:\n`{BOT_PREFIX}restaurar_backup {filename} confirmar`",
+            color=COLORS["warning"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Carrega o backup
+    backup_data = backup_manager.load_backup(filename)
+    
+    if not backup_data:
+        embed = discord.Embed(
+            title="❌ Backup Não Encontrado",
+            description=f"O arquivo `{filename}` não foi encontrado.\n\nUse `{BOT_PREFIX}listar_backups` para ver os backups disponíveis.",
+            color=COLORS["error"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Mensagem de progresso
+    progress_msg = await ctx.send(
+        embed=discord.Embed(
+            title="🔄 Restaurando Backup...",
+            description="Por favor, aguarde. Isso pode levar vários minutos...\n\n⚠️ **NÃO INTERROMPA O PROCESSO!**",
+            color=COLORS["warning"]
+        )
+    )
+    
+    try:
+        # Restaura o backup
+        results = await backup_manager.restore_backup(ctx.guild, backup_data)
+        
+        if results['success']:
+            stats = f"""
+            ✅ **Backup restaurado com sucesso!**
+            
+            📊 **Itens Restaurados:**
+            🎭 Cargos: {results['restored']['roles']}
+            📂 Categorias: {results['restored']['categories']}
+            📝 Canais: {results['restored']['channels']}
+            """
+            
+            if results['errors']:
+                stats += f"\n⚠️ **Avisos ({len(results['errors'])}):**\n"
+                for error in results['errors'][:5]:  # Mostra apenas os 5 primeiros erros
+                    stats += f"• {error}\n"
+                if len(results['errors']) > 5:
+                    stats += f"... e mais {len(results['errors']) - 5} erro(s)."
+            
+            embed = discord.Embed(
+                title="✅ Restauração Concluída!",
+                description=stats,
+                color=COLORS["success"],
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_footer(text=f"Restaurado por {ctx.author.display_name}")
+            
+            await progress_msg.edit(embed=embed)
+            logger.info(f"Backup restaurado por {ctx.author} ({ctx.author.id}): {filename}")
+        
+        else:
+            error_msg = "\n".join(results['errors'][:3])
+            embed = discord.Embed(
+                title="❌ Erro na Restauração",
+                description=f"```{error_msg}```",
+                color=COLORS["error"]
+            )
+            await progress_msg.edit(embed=embed)
+    
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Erro Fatal",
+            description=f"```{str(e)}```",
+            color=COLORS["error"]
+        )
+        await progress_msg.edit(embed=embed)
+        logger.error(f"Erro ao restaurar backup: {e}")
+
+
+@bot.command(name="deletar_backup")
+@commands.has_permissions(administrator=True)
+async def deletar_backup(ctx, filename: str = None):
+    """Deleta um backup"""
+    
+    if not filename:
+        embed = discord.Embed(
+            title="❌ Arquivo Não Especificado",
+            description=f"Use: `{BOT_PREFIX}deletar_backup <nome_arquivo>`",
+            color=COLORS["error"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    try:
+        import os
+        filepath = os.path.join(backup_manager.backup_folder, filename)
+        
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            embed = discord.Embed(
+                title="✅ Backup Deletado",
+                description=f"O backup `{filename}` foi deletado com sucesso!",
+                color=COLORS["success"]
+            )
+            logger.info(f"Backup deletado por {ctx.author} ({ctx.author.id}): {filename}")
+        else:
+            embed = discord.Embed(
+                title="❌ Backup Não Encontrado",
+                description=f"O arquivo `{filename}` não existe.",
+                color=COLORS["error"]
+            )
+        
+        await ctx.send(embed=embed)
+    
+    except Exception as e:
+        embed = discord.Embed(
+            title="❌ Erro ao Deletar",
+            description=f"```{str(e)}```",
+            color=COLORS["error"]
+        )
+        await ctx.send(embed=embed)
+
+
+@bot.command(name="ajuda_backup")
+@commands.has_permissions(administrator=True)
+async def ajuda_backup(ctx):
+    """Mostra ajuda sobre o sistema de backup"""
+    
+    embed = discord.Embed(
+        title="💾 Sistema de Backup - Guia Completo",
+        description="Sistema completo para fazer backup e restaurar seu servidor Discord!",
+        color=COLORS["info"]
+    )
+    
+    embed.add_field(
+        name="📦 Criar Backup",
+        value=f"`{BOT_PREFIX}backup_loja`\n\nCria um backup completo do servidor incluindo:\n• Todos os cargos\n• Todas as categorias\n• Todos os canais (texto e voz)\n• Permissões\n• Configurações gerais",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📋 Listar Backups",
+        value=f"`{BOT_PREFIX}listar_backups`\n\nMostra todos os backups salvos com informações detalhadas.",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔄 Restaurar Backup",
+        value=f"`{BOT_PREFIX}restaurar_backup <arquivo> confirmar`\n\n⚠️ **ATENÇÃO:** Restaurar um backup pode criar novos canais e cargos. Use com cuidado!\n\nExemplo:\n`{BOT_PREFIX}restaurar_backup backup_MeuServidor_20250101_120000.json confirmar`",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🗑️ Deletar Backup",
+        value=f"`{BOT_PREFIX}deletar_backup <arquivo>`\n\nRemove um backup do sistema.",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💡 Dicas Importantes",
+        value="• Faça backups regulares, especialmente antes de grandes mudanças\n• Backups são salvos localmente no servidor\n• Apenas administradores podem usar estes comandos\n• Os backups incluem a estrutura, não as mensagens",
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Use {BOT_PREFIX}ticketinfo para info sobre tickets")
+    await ctx.send(embed=embed)
+
+
+@bot.command(name="nova_loja")
+@commands.has_permissions(administrator=True)
+async def nova_loja(ctx, confirmar: str = None):
+    """Cria uma loja profissional do zero (APAGA TUDO EXCETO CARGOS!)"""
+    
+    # Aviso de segurança
+    if confirmar != "CONFIRMAR":
+        embed = discord.Embed(
+            title="⚠️ ATENÇÃO - COMANDO DESTRUTIVO!",
+            description="""
+            **Este comando irá:**
+            ❌ Deletar TODAS as categorias
+            ❌ Deletar TODOS os canais (texto e voz)
+            ✅ Manter todos os cargos
+            ✅ Criar estrutura profissional de loja Roblox
+            ✅ Configurar painéis automaticamente
+            
+            **ANTES DE USAR:**
+            1️⃣ Faça um backup: `!backup_loja`
+            2️⃣ Se não gostar, restaure: `!restaurar_backup <arquivo> confirmar`
+            
+            **⚠️ ESTA AÇÃO NÃO PODE SER DESFEITA SEM BACKUP!**
+            
+            Para confirmar, use:
+            `!nova_loja CONFIRMAR`
+            """,
+            color=0xff0000
+        )
+        embed.set_footer(text="⚠️ LEIA COM ATENÇÃO ANTES DE CONFIRMAR!")
+        await ctx.send(embed=embed)
+        return
+    
+    # Verificar se há backup recente
+    backups = backup_manager.list_backups()
+    has_recent_backup = False
+    
+    if backups:
+        from datetime import datetime, timedelta
+        latest_backup = backups[-1]
+        backup_date = datetime.fromisoformat(latest_backup['created_at'])
+        if datetime.now() - backup_date < timedelta(days=1):
+            has_recent_backup = True
+    
+    if not has_recent_backup:
+        embed = discord.Embed(
+            title="⚠️ AVISO: SEM BACKUP RECENTE!",
+            description="""
+            Você não tem um backup recente (últimas 24h).
+            
+            **É ALTAMENTE RECOMENDADO fazer um backup antes!**
+            
+            Deseja continuar mesmo assim?
+            • `!backup_loja` - Criar backup primeiro (RECOMENDADO)
+            • `!nova_loja CONFIRMAR FORCAR` - Continuar sem backup (NÃO RECOMENDADO)
+            """,
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Mensagem de progresso inicial
+    progress_embed = discord.Embed(
+        title="🏗️ Criando Nova Loja Profissional...",
+        description="""
+        **Progresso:**
+        ⏳ Fase 1: Limpando servidor...
+        ⏸️ Fase 2: Criando estrutura...
+        ⏸️ Fase 3: Configurando painéis...
+        
+        **⚠️ NÃO INTERROMPA O PROCESSO!**
+        Isso pode levar alguns minutos...
+        """,
+        color=0xffa500
+    )
+    progress_msg = await ctx.send(embed=progress_embed)
+    
+    try:
+        # Criar a loja
+        results = await loja_builder.create_professional_shop(ctx.guild)
+        
+        # Atualizar com sucesso
+        if results['success']:
+            success_embed = discord.Embed(
+                title="✅ Loja Criada com Sucesso!",
+                description=f"""
+                **🎉 Sua loja profissional está pronta!**
+                
+                📊 **Estatísticas:**
+                📂 Categorias criadas: {results['created']['categories']}
+                📝 Canais criados: {results['created']['channels']}
+                📧 Mensagens/painéis: {results['created']['messages']}
+                
+                **📋 Estrutura criada:**
+                
+                📢 **INFORMAÇÕES**
+                • 👋 boas-vindas
+                • 📜 regras
+                • 📢 anúncios
+                • ℹ️ informações
+                
+                🛒 **LOJA**
+                • 🎮 contas-roblox
+                • 💎 robux
+                • 🎫 passes-e-itens
+                • 🔥 promoções
+                
+                💰 **ATENDIMENTO**
+                • 📧 abrir-ticket (com painel)
+                • ⭐ avaliações
+                • ❓ dúvidas-frequentes
+                
+                💬 **COMUNIDADE**
+                • 💭 chat-geral
+                • 😂 memes
+                • 📸 mídia
+                • 🤝 parcerias
+                • 🎤 Canais de voz
+                
+                🔧 **STAFF** (privado)
+                • 📊 logs
+                • 🤖 comandos
+                • ⚙️ configuração
+                
+                **✨ Todos os painéis já estão configurados!**
+                """,
+                color=0x00ff00,
+                timestamp=discord.utils.utcnow()
+            )
+            
+            if results['errors']:
+                error_list = "\n".join([f"• {err}" for err in results['errors'][:5]])
+                success_embed.add_field(
+                    name="⚠️ Avisos",
+                    value=error_list,
+                    inline=False
+                )
+            
+            success_embed.add_field(
+                name="💡 Próximos Passos",
+                value="""
+                1. Configure os IDs dos canais no `.env` se necessário
+                2. Ajuste permissões dos cargos conforme sua equipe
+                3. Comece a adicionar produtos pela aba "Contas" no painel web
+                4. Se não gostar, use `!restaurar_backup <arquivo> confirmar`
+                """,
+                inline=False
+            )
+            
+            success_embed.set_footer(text=f"Loja criada por {ctx.author.display_name}")
+            await progress_msg.edit(embed=success_embed)
+            
+            logger.info(f"✅ Nova loja criada por {ctx.author} ({ctx.author.id})")
+            
+        else:
+            # Erro na criação
+            error_embed = discord.Embed(
+                title="❌ Erro ao Criar Loja",
+                description="Ocorreram erros durante a criação da loja.",
+                color=0xff0000
+            )
+            
+            error_list = "\n".join([f"• {err}" for err in results['errors'][:10]])
+            error_embed.add_field(
+                name="Erros Encontrados",
+                value=f"```{error_list}```",
+                inline=False
+            )
+            
+            error_embed.add_field(
+                name="🔄 Como Recuperar",
+                value=f"Use: `{BOT_PREFIX}restaurar_backup <arquivo> confirmar`",
+                inline=False
+            )
+            
+            await progress_msg.edit(embed=error_embed)
+            
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Erro Fatal",
+            description=f"```{str(e)}```",
+            color=0xff0000
+        )
+        error_embed.add_field(
+            name="🔄 Como Recuperar",
+            value=f"Use: `{BOT_PREFIX}restaurar_backup <arquivo> confirmar`",
+            inline=False
+        )
+        await progress_msg.edit(embed=error_embed)
+        logger.error(f"Erro fatal ao criar loja: {e}")
+
+
 # ==================== SERVIR PAINEL WEB ====================
 
 @app.route('/painel')
@@ -1036,6 +1594,112 @@ def create_ticket_panel():
                 'success': True,
                 'message': result
             }), 201
+        else:
+            return jsonify({'success': False, 'error': result}), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== ENDPOINTS DE ANÚNCIOS E CONTAS ====================
+
+@app.route('/api/bot/announcement/send', methods=['POST'])
+def api_send_announcement():
+    """API: Envia anúncio para o canal especificado"""
+    try:
+        data = request.get_json()
+        message = data.get('message', '')
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Mensagem é obrigatória'}), 400
+        
+        async def send_announcement():
+            try:
+                channel = bot_instance.get_channel(1443026662009606195)
+                if not channel:
+                    return False, "Canal de anúncios não encontrado"
+                
+                embed = discord.Embed(
+                    title="📢 Anúncio Importante",
+                    description=message,
+                    color=COLORS["info"],
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.set_footer(text="Equipe de Administração")
+                
+                await channel.send(embed=embed)
+                logger.info(f"📢 Anúncio enviado: {message[:50]}...")
+                return True, "Anúncio enviado com sucesso!"
+            except Exception as e:
+                logger.error(f"❌ Erro ao enviar anúncio: {e}")
+                return False, str(e)
+        
+        try:
+            loop = bot_instance.loop
+            future = asyncio.run_coroutine_threadsafe(send_announcement(), loop)
+            success, result = future.result(timeout=10)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+        
+        if success:
+            return jsonify({'success': True, 'message': result}), 200
+        else:
+            return jsonify({'success': False, 'error': result}), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/account/post', methods=['POST'])
+def api_post_account():
+    """API: Posta anúncio de conta no Discord"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['title', 'description', 'price', 'id']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'success': False, 'error': f'{field} é obrigatório'}), 400
+        
+        async def post_account():
+            try:
+                channel = bot_instance.get_channel(1443026662009606195)
+                if not channel:
+                    return False, "Canal de anúncios não encontrado"
+                
+                embed = discord.Embed(
+                    title=f"🎮 {data['title']}",
+                    description=data['description'],
+                    color=0x00ff00,
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(name="💰 Preço", value=data['price'], inline=True)
+                
+                if data.get('additional_info'):
+                    embed.add_field(name="ℹ️ Informações Adicionais", value=data['additional_info'], inline=False)
+                
+                if data.get('image_url'):
+                    embed.set_image(url=data['image_url'])
+                
+                embed.set_footer(text=f"ID: {data['id']}")
+                
+                # View com botão de compra
+                view = BuyAccountView(data['id'])
+                
+                await channel.send(embed=embed, view=view)
+                logger.info(f"🎮 Anúncio de conta postado: {data['title']}")
+                return True, "Conta anunciada com sucesso!"
+            except Exception as e:
+                logger.error(f"❌ Erro ao postar conta: {e}")
+                return False, str(e)
+        
+        try:
+            loop = bot_instance.loop
+            future = asyncio.run_coroutine_threadsafe(post_account(), loop)
+            success, result = future.result(timeout=10)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+        
+        if success:
+            return jsonify({'success': True, 'message': result}), 200
         else:
             return jsonify({'success': False, 'error': result}), 400
             
