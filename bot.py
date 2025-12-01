@@ -862,6 +862,8 @@ def api_close_ticket(ticket_id):
             return jsonify({'success': False, 'error': 'Canal do ticket não encontrado'}), 404
         
         async def close_ticket():
+            logger.info(f"🔒 Fechando ticket #{ticket_id} via painel web")
+            
             # Envia mensagem de fechamento
             embed = discord.Embed(
                 title="🔒 Ticket Fechado",
@@ -876,10 +878,12 @@ def api_close_ticket(ticket_id):
             
             # Fecha no gerenciador
             ticket_manager.close_ticket(ticket_id, reason)
+            logger.info(f"✅ Ticket #{ticket_id} fechado no gerenciador")
             
             # Deleta após 10 segundos
             await asyncio.sleep(10)
             await ticket_channel.delete(reason=f"Ticket fechado via painel: {reason}")
+            logger.info(f"🗑️ Canal do ticket #{ticket_id} deletado")
         
         asyncio.create_task(close_ticket())
         
@@ -902,7 +906,15 @@ def api_get_tickets():
 def get_stats():
     """Retorna estatísticas dos tickets"""
     try:
+        if not bot_instance:
+            return jsonify({'success': False, 'error': 'Bot não conectado'}), 503
+            
+        # Força recarga dos tickets
         tickets = ticket_manager.get_all_tickets()
+        
+        # Debug: log dos tickets encontrados
+        logger.info(f"📊 Estatísticas: {len(tickets)} tickets encontrados")
+        
         total = len(tickets)
         open_tickets = len([t for t in tickets if t.get('status') == 'open'])
         closed_tickets = total - open_tickets
@@ -918,6 +930,7 @@ def get_stats():
             }
         }), 200
     except Exception as e:
+        logger.error(f"❌ Erro ao buscar estatísticas: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/tickets', methods=['GET'])
@@ -972,12 +985,17 @@ def create_ticket_panel():
             if not user:
                 return False, f"Usuário com ID {user_id} não encontrado no servidor"
             
+            # Log antes de criar
+            logger.info(f"🎫 Criando ticket via painel para {user.display_name} (ID: {user_id})")
+            
             # Cria o ticket usando o sistema existente
             ticket_data = ticket_manager.create_ticket(str(user_id), reason)
             
             if ticket_data:
+                logger.info(f"✅ Ticket #{ticket_data.get('number')} criado com sucesso")
                 return True, f"Ticket #{ticket_data.get('number')} criado com sucesso para {user.display_name}"
             else:
+                logger.error(f"❌ Erro ao criar ticket no sistema para {user.display_name}")
                 return False, "Erro ao criar ticket no sistema"
         
         # Executa a função assíncrona

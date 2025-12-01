@@ -61,3 +61,42 @@ class TicketManager:
         if ticket_id in self.tickets:
             self.tickets[ticket_id]["channel_id"] = channel_id
             self.save_tickets()
+    
+    def get_all_tickets(self):
+        """Retorna todos os tickets"""
+        return list(self.tickets.values())
+    
+    def create_ticket(self, user_id: str, reason: str = "Ticket criado via painel"):
+        """Versão alternativa para criar ticket com string user_id"""
+        if hasattr(self, 'tickets') and self.tickets:
+            # Encontra o próximo número
+            numbers = [int(t.split('_')[1]) for t in self.tickets.keys() if t.startswith('ticket_')]
+            next_number = max(numbers) + 1 if numbers else 1
+        else:
+            next_number = 1
+            
+        ticket_id = f"ticket_{next_number}"
+        ticket_data = {
+            "user_id": user_id,
+            "number": next_number,
+            "status": "open",
+            "reason": reason,
+            "created_at": str(discord.utils.utcnow()),
+            "channel_id": None
+        }
+        
+        self.tickets[ticket_id] = ticket_data
+        self.save_tickets()
+        return ticket_data
+    
+    def close_ticket(self, ticket_id: str, reason: str = "Fechado"):
+        """Versão alternativa para fechar ticket com reason string"""
+        ticket_key = f"ticket_{ticket_id}" if not ticket_id.startswith('ticket_') else ticket_id
+        
+        if ticket_key in self.tickets:
+            self.tickets[ticket_key]["status"] = "closed"
+            self.tickets[ticket_key]["closed_reason"] = reason
+            self.tickets[ticket_key]["closed_at"] = str(discord.utils.utcnow())
+            self.save_tickets()
+            return True
+        return False
