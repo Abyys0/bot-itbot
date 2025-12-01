@@ -740,9 +740,24 @@ def painel():
     """Serve o painel web"""
     try:
         with open('index.html', 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            response = app.response_class(
+                content,
+                mimetype='text/html'
+            )
+            return response
     except FileNotFoundError:
-        return "Painel não encontrado", 404
+        return "<h1>❌ Painel não encontrado</h1><p>O arquivo index.html não foi encontrado no servidor.</p>", 404
+
+@app.route('/admin')
+def admin():
+    """Redireciona /admin para /painel"""
+    return painel()
+
+@app.route('/dashboard') 
+def dashboard():
+    """Redireciona /dashboard para /painel"""
+    return painel()
 
 # ==================== API ENDPOINTS PARA PAINEL ====================
 
@@ -880,6 +895,54 @@ def api_get_tickets():
         return jsonify({'success': True, 'tickets': tickets}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== ENDPOINTS PARA PAINEL WEB ====================
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    """Retorna estatísticas dos tickets"""
+    try:
+        tickets = ticket_manager.get_all_tickets()
+        total = len(tickets)
+        open_tickets = len([t for t in tickets if t.get('status') == 'open'])
+        closed_tickets = total - open_tickets
+        open_percentage = round((open_tickets / total * 100) if total > 0 else 0)
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_tickets': total,
+                'open_tickets': open_tickets,
+                'closed_tickets': closed_tickets,
+                'open_percentage': open_percentage
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/tickets', methods=['GET'])
+def get_tickets():
+    """Retorna todos os tickets"""
+    try:
+        tickets = ticket_manager.get_all_tickets()
+        return jsonify({'success': True, 'tickets': tickets}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ticket/<ticket_id>/notify', methods=['POST'])
+def notify_staff_panel(ticket_id):
+    """Notifica staff via painel"""
+    return api_notify_staff(ticket_id)
+
+@app.route('/api/ticket/<ticket_id>/add-member', methods=['POST']) 
+def add_member_panel(ticket_id):
+    """Adiciona membro via painel"""
+    return api_add_member(ticket_id)
+
+@app.route('/api/ticket/<ticket_id>/close', methods=['POST'])
+def close_ticket_panel(ticket_id):
+    """Fecha ticket via painel"""
+    return api_close_ticket(ticket_id)
 
 def run_web_server():
     """Executa o servidor web em thread separada"""
