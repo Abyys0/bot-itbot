@@ -1848,7 +1848,8 @@ def api_post_account():
 
 def run_web_server():
     """Executa o servidor web em thread separada"""
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    port = int(os.getenv('PORT', 8080))  # Render fornece PORT automaticamente
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 # ==================== ERROR HANDLERS ====================
 
