@@ -3,5 +3,6 @@
   "ticket_category_id": 0,
   "log_channel_id": 0,
   "announcements_channel_id": 0,
-  "accounts_channel_id": 0
+  "accounts_channel_id": 0,
+  "welcome_channel_id": 0
 }

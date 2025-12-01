@@ -20,7 +20,8 @@ def load_channel_ids():
         "ticket_category_id": int(os.getenv("TICKET_CATEGORY_ID", "0")),
         "log_channel_id": int(os.getenv("LOG_CHANNEL_ID", "0")),
         "announcements_channel_id": int(os.getenv("ANNOUNCEMENTS_CHANNEL_ID", "0")),
-        "accounts_channel_id": int(os.getenv("ACCOUNTS_CHANNEL_ID", "0"))
+        "accounts_channel_id": int(os.getenv("ACCOUNTS_CHANNEL_ID", "0")),
+        "welcome_channel_id": int(os.getenv("WELCOME_CHANNEL_ID", "0"))
     }
 
 # Carregar IDs dinamicamente
@@ -35,6 +36,7 @@ TICKET_CATEGORY_ID = _channel_config.get("ticket_category_id", 0)
 LOG_CHANNEL_ID = _channel_config.get("log_channel_id", 0)
 ANNOUNCEMENTS_CHANNEL_ID = _channel_config.get("announcements_channel_id", 0)
 ACCOUNTS_CHANNEL_ID = _channel_config.get("accounts_channel_id", 0)
+WELCOME_CHANNEL_ID = _channel_config.get("welcome_channel_id", 0)
 STAFF_ROLE_IDS = [int(role_id.strip()) for role_id in os.getenv("STAFF_ROLE_IDS", "0").split(",") if role_id.strip()]  # Cargos de staff para fechar tickets
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))  # ID do servidor
 

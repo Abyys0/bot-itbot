@@ -75,7 +75,8 @@ async def auto_detect_channels():
         "ticket_category_id": 0,
         "log_channel_id": 0,
         "announcements_channel_id": 0,
-        "accounts_channel_id": 0
+        "accounts_channel_id": 0,
+        "welcome_channel_id": 0
     }
     
     # Buscar canais
@@ -93,6 +94,9 @@ async def auto_detect_channels():
         elif 'log' in name and config['log_channel_id'] == 0:
             config['log_channel_id'] = channel.id
             logger.info(f"✅ Canal de logs detectado: #{channel.name} ({channel.id})")
+        elif ('boas-vinda' in name or 'bem-vindo' in name or 'welcome' in name) and config['welcome_channel_id'] == 0:
+            config['welcome_channel_id'] = channel.id
+            logger.info(f"✅ Canal de boas-vindas detectado: #{channel.name} ({channel.id})")
     
     # Buscar categoria de atendimento
     for category in guild.categories:
@@ -110,13 +114,14 @@ async def auto_detect_channels():
             
             # Recarregar config
             from config import load_channel_ids
-            global TICKET_CHANNEL_ID, TICKET_CATEGORY_ID, LOG_CHANNEL_ID, ANNOUNCEMENTS_CHANNEL_ID, ACCOUNTS_CHANNEL_ID
+            global TICKET_CHANNEL_ID, TICKET_CATEGORY_ID, LOG_CHANNEL_ID, ANNOUNCEMENTS_CHANNEL_ID, ACCOUNTS_CHANNEL_ID, WELCOME_CHANNEL_ID
             _config = load_channel_ids()
             TICKET_CHANNEL_ID = _config.get('ticket_channel_id', 0)
             TICKET_CATEGORY_ID = _config.get('ticket_category_id', 0)
             LOG_CHANNEL_ID = _config.get('log_channel_id', 0)
             ANNOUNCEMENTS_CHANNEL_ID = _config.get('announcements_channel_id', 0)
             ACCOUNTS_CHANNEL_ID = _config.get('accounts_channel_id', 0)
+            WELCOME_CHANNEL_ID = _config.get('welcome_channel_id', 0)
             
         except Exception as e:
             logger.error(f"❌ Erro ao salvar configuração detectada: {e}")
@@ -873,6 +878,59 @@ async def on_ready():
                 logger.info("Mensagem de ticket enviada com sucesso")
             except Exception as e:
                 logger.error(f"Erro ao enviar mensagem de ticket: {e}")
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    """Evento disparado quando um novo membro entra no servidor"""
+    try:
+        # Buscar canal de boas-vindas
+        from config import WELCOME_CHANNEL_ID
+        
+        if WELCOME_CHANNEL_ID == 0:
+            logger.warning("Canal de boas-vindas não configurado")
+            return
+        
+        welcome_channel = member.guild.get_channel(WELCOME_CHANNEL_ID)
+        
+        if not welcome_channel:
+            logger.warning(f"Canal de boas-vindas {WELCOME_CHANNEL_ID} não encontrado")
+            return
+        
+        # Criar embed de boas-vindas
+        embed = discord.Embed(
+            title=f"👋 Bem-vindo(a) à {member.guild.name}!",
+            description=f"Olá {member.mention}! Seja muito bem-vindo(a) à nossa loja de Roblox!",
+            color=0x00ff00,
+            timestamp=discord.utils.utcnow()
+        )
+        
+        embed.set_thumbnail(url=member.display_avatar.url)
+        
+        embed.add_field(
+            name="📜 Primeiro passo",
+            value="Leia nossas regras e informações importantes!",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🛒 Fazer uma compra",
+            value="Confira nossos produtos e abra um ticket para comprar!",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="💬 Comunidade",
+            value="Converse com outros membros e divirta-se!",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Agora somos {member.guild.member_count} membros!")
+        
+        await welcome_channel.send(embed=embed)
+        logger.info(f"Boas-vindas enviadas para {member.name}")
+        
+    except Exception as e:
+        logger.error(f"Erro ao enviar boas-vindas: {e}")
 
 
 # ==================== COMANDOS ====================

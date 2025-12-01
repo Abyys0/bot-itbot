@@ -554,7 +554,8 @@ class LojaBuilder:
                 "ticket_category_id": support_category.id if support_category else 0,
                 "log_channel_id": log_channel.id if log_channel else 0,
                 "announcements_channel_id": self.created_channels.get('announcements').id if 'announcements' in self.created_channels else 0,
-                "accounts_channel_id": self.created_channels.get('accounts').id if 'accounts' in self.created_channels else 0
+                "accounts_channel_id": self.created_channels.get('accounts').id if 'accounts' in self.created_channels else 0,
+                "welcome_channel_id": self.created_channels.get('welcome').id if 'welcome' in self.created_channels else 0
             }
             
             with open('channel_config.json', 'w', encoding='utf-8') as f:
