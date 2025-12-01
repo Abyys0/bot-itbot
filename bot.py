@@ -1881,14 +1881,19 @@ def main():
         print("Configure o arquivo .env com seu token do Discord")
         return
     
-    if GUILD_ID == 0 or TICKET_CHANNEL_ID == 0 or LOG_CHANNEL_ID == 0 or not STAFF_ROLE_IDS:
-        print("❌ ERRO: IDs de configuração não definidos!")
-        print("Configure corretamente o arquivo .env com:")
-        print("  - GUILD_ID (ID do servidor Discord)")
-        print("  - TICKET_CHANNEL_ID (ID do canal para criar tickets)")
-        print("  - LOG_CHANNEL_ID (ID do canal para logs)")
-        print("  - STAFF_ROLE_IDS (IDs dos cargos de staff, separados por vírgula)")
+    # Validar apenas GUILD_ID e STAFF_ROLE_IDS (necessários antes de auto-detecção)
+    if GUILD_ID == 0:
+        print("❌ ERRO: GUILD_ID não definido!")
+        print("Configure o arquivo .env com o ID do servidor Discord")
         return
+    
+    if not STAFF_ROLE_IDS or STAFF_ROLE_IDS == [0]:
+        print("⚠️ AVISO: STAFF_ROLE_IDS não configurado!")
+        print("Configure no .env para permitir que staff feche tickets")
+    
+    # IDs de canais não são mais obrigatórios - sistema de auto-detecção irá encontrá-los
+    if TICKET_CHANNEL_ID == 0 or LOG_CHANNEL_ID == 0:
+        print("ℹ️ IDs de canais não configurados - usando sistema de auto-detecção")
     
     print("🚀 Iniciando bot iBot...")
     print("🌐 Iniciando servidor web com painel integrado na porta 8080...")
