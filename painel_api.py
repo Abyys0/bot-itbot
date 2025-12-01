@@ -2,12 +2,37 @@ from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
 import json
 import os
+import requests
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-# Funções para gerenciar tickets sem bot
+# URL da API interna do bot
+BOT_API_URL = "http://127.0.0.1:5001/api/bot"
+
+# Funções para comunicar com a API do bot
+def call_bot_api(endpoint, method='GET', data=None):
+    """Chama a API interna do bot"""
+    try:
+        url = f"{BOT_API_URL}{endpoint}"
+        
+        if method == 'GET':
+            response = requests.get(url, timeout=10)
+        elif method == 'POST':
+            response = requests.post(url, json=data, timeout=10)
+        else:
+            return {'success': False, 'error': 'Método não suportado'}
+        
+        return response.json()
+    except requests.exceptions.ConnectionError:
+        return {'success': False, 'error': 'Bot não está online ou API indisponível'}
+    except requests.exceptions.Timeout:
+        return {'success': False, 'error': 'Timeout na comunicação com o bot'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+# Funções para gerenciar tickets localmente (fallback)
 def load_tickets():
     """Carrega tickets do arquivo JSON"""
     try:
@@ -19,7 +44,13 @@ def load_tickets():
         return []
 
 def get_all_tickets():
-    """Retorna todos os tickets"""
+    """Retorna todos os tickets (tenta API primeiro, depois fallback)"""
+    # Tenta buscar via API do bot
+    result = call_bot_api('/tickets')
+    if result.get('success'):
+        return result.get('tickets', [])
+    
+    # Fallback para arquivo local
     return load_tickets()
 
 # ==================== ENDPOINTS ====================
@@ -94,24 +125,30 @@ def create_ticket():
 
 @app.route('/api/ticket/<ticket_id>/close', methods=['POST'])
 def close_ticket(ticket_id):
-    """Fecha um ticket"""
+    """Fecha um ticket via API do bot"""
     try:
         data = request.get_json()
-        reason = data.get('reason', 'Sem motivo especificado')
+        reason = data.get('reason', 'Fechado via painel web')
         
-        success = ticket_manager.close_ticket(ticket_id, reason)
-        if success:
+        result = call_bot_api(f'/close/{ticket_id}', 'POST', {'reason': reason})
+        
+        if result.get('success'):
             return jsonify({
                 'success': True,
-                'message': 'Ticket fechado com sucesso'
+                'message': result.get('message')
             }), 200
-        return jsonify({'success': False, 'error': 'Ticket não encontrado'}), 404
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido')
+            }), 400
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ticket/<ticket_id>/add-member', methods=['POST'])
 def add_member(ticket_id):
-    """Adiciona um membro a um ticket"""
+    """Adiciona um membro ao ticket via API do bot"""
     try:
         data = request.get_json()
         member_id = data.get('member_id')
@@ -119,39 +156,45 @@ def add_member(ticket_id):
         if not member_id:
             return jsonify({'success': False, 'error': 'member_id é obrigatório'}), 400
         
-        ticket = ticket_manager.get_ticket(ticket_id)
-        if not ticket:
-            return jsonify({'success': False, 'error': 'Ticket não encontrado'}), 404
+        # Validar se é um ID numérico válido
+        try:
+            member_id = int(member_id)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'member_id deve ser um número válido'}), 400
         
-        # Adiciona o membro à lista
-        if 'members' not in ticket:
-            ticket['members'] = []
-        if member_id not in ticket['members']:
-            ticket['members'].append(member_id)
-            ticket_manager.update_ticket(ticket_id, ticket)
+        result = call_bot_api(f'/add-member/{ticket_id}', 'POST', {'member_id': member_id})
         
-        return jsonify({
-            'success': True,
-            'message': f'Membro {member_id} adicionado ao ticket'
-        }), 200
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': result.get('message')
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido')
+            }), 400
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ticket/<ticket_id>/notify', methods=['POST'])
 def notify_staff(ticket_id):
-    """Notifica a equipe sobre um ticket"""
+    """Notifica a equipe sobre um ticket via API do bot"""
     try:
-        ticket = ticket_manager.get_ticket(ticket_id)
-        if not ticket:
-            return jsonify({'success': False, 'error': 'Ticket não encontrado'}), 404
+        result = call_bot_api(f'/notify/{ticket_id}', 'POST')
         
-        # Aqui você pode integrar com Discord para enviar notificação
-        # Por enquanto, apenas retorna sucesso
-        
-        return jsonify({
-            'success': True,
-            'message': f'Equipe notificada sobre ticket #{ticket.get("number")}'
-        }), 200
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'message': result.get('message')
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Erro desconhecido')
+            }), 400
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -185,4 +228,8 @@ def internal_error(error):
     return jsonify({'success': False, 'error': 'Erro interno do servidor'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("🌐 Iniciando painel web...")
+    print("📡 Conectará com o bot na porta 5001")
+    print("💡 Certifique-se de que o bot está rodando!")
+    
+    app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)

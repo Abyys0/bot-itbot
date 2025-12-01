@@ -9,12 +9,23 @@ from ticket_manager import TicketManager
 import logging
 import asyncio
 
-# Keep-alive para evitar hibernação no Render
-try:
-    from keep_alive import keep_alive
-    keep_alive()
-except ImportError:
-    pass  # Se não tiver Flask instalado, ignora (desenvolvimento local)
+# Keep-alive e painel web integrado
+from flask import Flask, jsonify, request, send_from_directory
+import threading
+import os
+
+# Flask app que serve tanto keep-alive quanto painel
+app = Flask(__name__)
+bot_instance = None
+
+# Keep-alive endpoints
+@app.route('/')
+def home():
+    return "Bot iBot está online! 🤖"
+
+@app.route('/health')
+def health():
+    return "OK"
 
 # Configuração de logging
 logging.basicConfig(level=logging.INFO)
@@ -722,6 +733,158 @@ async def ticket_info(ctx):
     await ctx.send(embed=embed)
 
 
+# ==================== SERVIR PAINEL WEB ====================
+
+@app.route('/painel')
+def painel():
+    """Serve o painel web"""
+    try:
+        with open('index.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "Painel não encontrado", 404
+
+# ==================== API ENDPOINTS PARA PAINEL ====================
+
+@app.route('/api/bot/notify/<ticket_id>', methods=['POST'])
+def api_notify_staff(ticket_id):
+    """API: Notifica staff sobre um ticket"""
+    try:
+        guild = bot_instance.get_guild(GUILD_ID)
+        if not guild:
+            return jsonify({'success': False, 'error': 'Servidor não encontrado'}), 404
+        
+        # Busca o canal do ticket
+        channel_name = f"ticket-{ticket_id}"
+        ticket_channel = discord.utils.get(guild.channels, name=channel_name)
+        
+        if not ticket_channel:
+            return jsonify({'success': False, 'error': 'Canal do ticket não encontrado'}), 404
+        
+        # Executa de forma assíncrona
+        async def send_notification():
+            staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS if guild.get_role(role_id)]
+            staff_mentions = " ".join([role.mention for role in staff_roles])
+            
+            embed = discord.Embed(
+                title="🔔 Notificação via Painel Web",
+                description="A equipe foi notificada através do painel web!",
+                color=COLORS["info"],
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="📍 Canal", value=ticket_channel.mention, inline=False)
+            embed.add_field(name="👤 Origem", value="Painel de Administração", inline=False)
+            
+            await ticket_channel.send(content=f"🚨 **ATENÇÃO EQUIPE!** {staff_mentions}", embed=embed)
+        
+        # Agenda a execução
+        asyncio.create_task(send_notification())
+        
+        return jsonify({'success': True, 'message': f'Staff notificado sobre ticket #{ticket_id}'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/add-member/<ticket_id>', methods=['POST'])
+def api_add_member(ticket_id):
+    """API: Adiciona membro a um ticket"""
+    try:
+        data = request.get_json()
+        member_id = int(data.get('member_id'))
+        
+        guild = bot_instance.get_guild(GUILD_ID)
+        if not guild:
+            return jsonify({'success': False, 'error': 'Servidor não encontrado'}), 404
+        
+        member = guild.get_member(member_id)
+        if not member:
+            return jsonify({'success': False, 'error': 'Membro não encontrado'}), 404
+        
+        channel_name = f"ticket-{ticket_id}"
+        ticket_channel = discord.utils.get(guild.channels, name=channel_name)
+        
+        if not ticket_channel:
+            return jsonify({'success': False, 'error': 'Canal do ticket não encontrado'}), 404
+        
+        async def add_member():
+            # Adiciona permissões
+            overwrites = ticket_channel.overwrites
+            overwrites[member] = discord.PermissionOverwrite(
+                read_messages=True, send_messages=True, 
+                read_message_history=True, attach_files=True
+            )
+            await ticket_channel.edit(overwrites=overwrites)
+            
+            # Notifica no canal
+            embed = discord.Embed(
+                title="➕ Membro Adicionado",
+                description=f"{member.mention} foi adicionado via painel web!",
+                color=COLORS["success"],
+                timestamp=discord.utils.utcnow()
+            )
+            await ticket_channel.send(embed=embed)
+        
+        asyncio.create_task(add_member())
+        
+        return jsonify({'success': True, 'message': f'Membro {member.display_name} adicionado!'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/close/<ticket_id>', methods=['POST'])
+def api_close_ticket(ticket_id):
+    """API: Fecha um ticket"""
+    try:
+        data = request.get_json()
+        reason = data.get('reason', 'Fechado via painel web')
+        
+        guild = bot_instance.get_guild(GUILD_ID)
+        if not guild:
+            return jsonify({'success': False, 'error': 'Servidor não encontrado'}), 404
+        
+        channel_name = f"ticket-{ticket_id}"
+        ticket_channel = discord.utils.get(guild.channels, name=channel_name)
+        
+        if not ticket_channel:
+            return jsonify({'success': False, 'error': 'Canal do ticket não encontrado'}), 404
+        
+        async def close_ticket():
+            # Envia mensagem de fechamento
+            embed = discord.Embed(
+                title="🔒 Ticket Fechado",
+                description="Este ticket foi fechado via painel web.",
+                color=COLORS["error"],
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="📝 Motivo", value=reason, inline=False)
+            embed.add_field(name="⏰ Auto-exclusão", value="Canal será deletado em 10 segundos...", inline=False)
+            
+            await ticket_channel.send(embed=embed)
+            
+            # Fecha no gerenciador
+            ticket_manager.close_ticket(ticket_id, reason)
+            
+            # Deleta após 10 segundos
+            await asyncio.sleep(10)
+            await ticket_channel.delete(reason=f"Ticket fechado via painel: {reason}")
+        
+        asyncio.create_task(close_ticket())
+        
+        return jsonify({'success': True, 'message': f'Ticket #{ticket_id} será fechado e deletado'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/bot/tickets', methods=['GET'])
+def api_get_tickets():
+    """API: Lista todos os tickets"""
+    try:
+        tickets = ticket_manager.get_all_tickets()
+        return jsonify({'success': True, 'tickets': tickets}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def run_web_server():
+    """Executa o servidor web em thread separada"""
+    app.run(host='0.0.0.0', port=8080, debug=False)
+
 # ==================== ERROR HANDLERS ====================
 
 @bot.event
@@ -745,7 +908,9 @@ async def on_command_error(ctx, error):
 # ==================== MAIN ====================
 
 def main():
-    """Função principal para executar o bot com auto-restart"""
+    """Função principal para executar o bot com auto-restart e API"""
+    global api_bot_instance
+    
     if not BOT_TOKEN or BOT_TOKEN == "seu_token_aqui":
         print("❌ ERRO: BOT_TOKEN não configurado!")
         print("Configure o arquivo .env com seu token do Discord")
@@ -761,10 +926,16 @@ def main():
         return
     
     print("🚀 Iniciando bot iBot...")
+    print("🌐 Iniciando servidor web com painel integrado na porta 8080...")
+    
+    # Inicia servidor web em thread separada
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
     
     # Loop de auto-restart em caso de erro
     while True:
         try:
+            bot_instance = bot  # Disponibiliza bot para API
             bot.run(BOT_TOKEN)
         except KeyboardInterrupt:
             print("\n⚠️ Bot encerrado pelo usuário")
