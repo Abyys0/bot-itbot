@@ -17,13 +17,13 @@ import threading
 import os
 
 # Flask app que serve tanto keep-alive quanto painel
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.', static_url_path='')
 bot_instance = None
 
-# Keep-alive endpoints
+# Rota principal - serve o painel web
 @app.route('/')
 def home():
-    return "Bot iBot está online! 🤖"
+    return send_from_directory('.', 'index.html')
 
 @app.route('/health')
 def health():
