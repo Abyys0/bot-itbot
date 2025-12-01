@@ -969,6 +969,18 @@ def close_ticket_panel(ticket_id):
     """Fecha ticket via painel"""
     return api_close_ticket(ticket_id)
 
+@app.route('/api/tickets/reset', methods=['POST'])
+def reset_tickets():
+    """Reset todos os tickets (apenas para debug)"""
+    try:
+        ticket_manager.tickets = {}
+        ticket_manager.save_tickets()
+        logger.info("🗑️ Todos os tickets foram resetados via API")
+        return jsonify({'success': True, 'message': 'Todos os tickets foram resetados'}), 200
+    except Exception as e:
+        logger.error(f"❌ Erro ao resetar tickets: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/ticket/create', methods=['POST'])
 def create_ticket_panel():
     """Cria um novo ticket via painel"""
@@ -1010,11 +1022,14 @@ def create_ticket_panel():
                 logger.error(f"❌ {result_msg}")
                 return False, result_msg
         
-        # Executa a função assíncrona
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        success, result = loop.run_until_complete(create_ticket())
-        loop.close()
+        # Executa a função assíncrona no loop do bot
+        try:
+            loop = bot_instance.loop
+            future = asyncio.run_coroutine_threadsafe(create_ticket(), loop)
+            success, result = future.result(timeout=30)  # 30 segundos timeout
+        except Exception as e:
+            logger.error(f"❌ Erro ao executar função assíncrona: {e}")
+            success, result = False, f"Erro interno: {str(e)}"
         
         if success:
             return jsonify({
