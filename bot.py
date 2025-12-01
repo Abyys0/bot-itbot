@@ -20,6 +20,16 @@ import os
 app = Flask(__name__)
 bot_instance = None
 
+# Importar e registrar rotas de moderação
+from moderation_api import register_moderation_routes
+
+# Função para obter instância do bot (necessária para as APIs)
+def get_bot_instance():
+    return bot_instance
+
+# Registrar rotas de moderação
+register_moderation_routes(app, get_bot_instance)
+
 # Rota principal - serve o painel web
 @app.route('/')
 def home():

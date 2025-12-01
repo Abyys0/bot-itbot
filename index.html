@@ -118,6 +118,92 @@
             opacity: 0.9;
         }
 
+        /* ==================== MODERAÇÃO ====================*/
+        .mod-tab-content {
+            display: none;
+        }
+
+        .mod-tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        .action-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .action-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        .btn-warning:hover {
+            background: #d68910;
+        }
+
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        .btn-success:hover {
+            background: #27ae60;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            width: 100%;
+            transition: background 0.3s;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
         /* ==================== TICKETS ====================*/
         #ticketsContainer {
             display: grid;
@@ -436,6 +522,7 @@
                 <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
                 <button class="tab-btn" onclick="switchTab('tickets')">🎫 Tickets</button>
                 <button class="tab-btn" onclick="switchTab('criar')">➕ Criar Ticket</button>
+                <button class="tab-btn" onclick="switchTab('moderacao')">🛡️ Moderação</button>
                 <button class="tab-btn" onclick="switchTab('anuncios')">📢 Anúncios</button>
                 <button class="tab-btn" onclick="switchTab('contas')">🎮 Contas</button>
                 <button class="tab-btn" onclick="switchTab('funcoes')">⚙️ Funções</button>
@@ -485,6 +572,182 @@
                         <textarea id="reason" rows="5" placeholder="Descreva o motivo do ticket..."></textarea>
                     </div>
                     <button class="btn-primary" onclick="createTicket()">Criar Ticket</button>
+                </div>
+            </div>
+
+            <!-- TAB: Moderação -->
+            <div id="tab-moderacao" class="tab-content">
+                <h2>🛡️ Painel de Moderação</h2>
+                
+                <!-- Submenu de Moderação -->
+                <div class="tabs" style="border-bottom: 1px solid #ddd; margin-bottom: 20px;">
+                    <button class="tab-btn active" onclick="switchModTab('punicoes')" id="modtab-punicoes">🔨 Punições</button>
+                    <button class="tab-btn" onclick="switchModTab('ferramentas')" id="modtab-ferramentas">🔧 Ferramentas</button>
+                    <button class="tab-btn" onclick="switchModTab('historico')" id="modtab-historico">📜 Histórico</button>
+                    <button class="tab-btn" onclick="switchModTab('stats')" id="modtab-stats">📊 Estatísticas</button>
+                </div>
+
+                <!-- SUB-TAB: Punições -->
+                <div id="modtab-punicoes-content" class="mod-tab-content active">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        
+                        <!-- Ban -->
+                        <div class="action-card" style="background: #fee; border-left: 4px solid #e74c3c;">
+                            <h3 style="color: #e74c3c;">🔨 Banir Usuário</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="banUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <div class="form-group">
+                                <label>Motivo</label>
+                                <textarea id="banReason" rows="3" placeholder="Digite o motivo do banimento"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Deletar mensagens (0-7 dias)</label>
+                                <input type="number" id="banDeleteDays" min="0" max="7" value="0" placeholder="0">
+                            </div>
+                            <button class="btn-danger" onclick="executeBan()">🔨 Banir</button>
+                        </div>
+
+                        <!-- Kick -->
+                        <div class="action-card" style="background: #fff3cd; border-left: 4px solid #f39c12;">
+                            <h3 style="color: #f39c12;">👢 Expulsar Usuário</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="kickUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <div class="form-group">
+                                <label>Motivo</label>
+                                <textarea id="kickReason" rows="3" placeholder="Digite o motivo da expulsão"></textarea>
+                            </div>
+                            <button class="btn-warning" onclick="executeKick()">👢 Expulsar</button>
+                        </div>
+
+                        <!-- Warn -->
+                        <div class="action-card" style="background: #fff8e1; border-left: 4px solid #ff9800;">
+                            <h3 style="color: #ff9800;">⚠️ Avisar Usuário</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="warnUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <div class="form-group">
+                                <label>Motivo</label>
+                                <textarea id="warnReason" rows="3" placeholder="Digite o motivo do aviso"></textarea>
+                            </div>
+                            <button class="btn-warning" onclick="executeWarn()">⚠️ Avisar</button>
+                        </div>
+
+                        <!-- Timeout -->
+                        <div class="action-card" style="background: #f3e5f5; border-left: 4px solid #9c27b0;">
+                            <h3 style="color: #9c27b0;">🔇 Timeout (Silenciar)</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="timeoutUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <div class="form-group">
+                                <label>Duração (minutos)</label>
+                                <input type="number" id="timeoutDuration" min="1" max="40320" value="10" placeholder="10">
+                            </div>
+                            <div class="form-group">
+                                <label>Motivo</label>
+                                <textarea id="timeoutReason" rows="2" placeholder="Digite o motivo"></textarea>
+                            </div>
+                            <button class="btn-secondary" onclick="executeTimeout()">🔇 Silenciar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUB-TAB: Ferramentas -->
+                <div id="modtab-ferramentas-content" class="mod-tab-content" style="display: none;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px;">
+                        
+                        <!-- Clear Messages -->
+                        <div class="action-card" style="background: #ffebee; border-left: 4px solid #f44336;">
+                            <h3 style="color: #f44336;">🗑️ Limpar Mensagens</h3>
+                            <div class="form-group">
+                                <label>ID do Canal</label>
+                                <input type="text" id="clearChannelId" placeholder="Cole o ID do canal">
+                            </div>
+                            <div class="form-group">
+                                <label>Quantidade (1-100)</label>
+                                <input type="number" id="clearAmount" min="1" max="100" value="10" placeholder="10">
+                            </div>
+                            <button class="btn-danger" onclick="executeClear()">🗑️ Limpar</button>
+                        </div>
+
+                        <!-- User Info -->
+                        <div class="action-card" style="background: #e3f2fd; border-left: 4px solid #2196f3;">
+                            <h3 style="color: #2196f3;">ℹ️ Informações do Usuário</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="infoUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <button class="btn-primary" onclick="getUserInfo()">ℹ️ Ver Informações</button>
+                            <div id="userInfoDisplay" style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px; display: none;"></div>
+                        </div>
+
+                        <!-- Server Info -->
+                        <div class="action-card" style="background: #f1f8e9; border-left: 4px solid #8bc34a;">
+                            <h3 style="color: #8bc34a;">🏠 Informações do Servidor</h3>
+                            <p style="margin-bottom: 15px; color: #666;">Ver estatísticas do servidor Discord</p>
+                            <button class="btn-success" onclick="getServerInfo()">🏠 Ver Servidor</button>
+                            <div id="serverInfoDisplay" style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px; display: none;"></div>
+                        </div>
+
+                        <!-- Lock Channel -->
+                        <div class="action-card" style="background: #fce4ec; border-left: 4px solid #e91e63;">
+                            <h3 style="color: #e91e63;">🔒 Trancar Canal</h3>
+                            <div class="form-group">
+                                <label>ID do Canal</label>
+                                <input type="text" id="lockChannelId" placeholder="Cole o ID do canal">
+                            </div>
+                            <button class="btn-danger" onclick="lockChannel()">🔒 Trancar</button>
+                            <button class="btn-success" onclick="unlockChannel()" style="margin-top: 10px;">🔓 Destrancar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUB-TAB: Histórico -->
+                <div id="modtab-historico-content" class="mod-tab-content" style="display: none;">
+                    <div style="max-width: 800px;">
+                        <div class="action-card">
+                            <h3>📜 Histórico de Punições</h3>
+                            <div class="form-group">
+                                <label>ID do Usuário</label>
+                                <input type="text" id="historyUserId" placeholder="Cole o ID do usuário">
+                            </div>
+                            <button class="btn-primary" onclick="getUserHistory()">📜 Ver Histórico</button>
+                            
+                            <div id="historyDisplay" style="margin-top: 20px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUB-TAB: Estatísticas -->
+                <div id="modtab-stats-content" class="mod-tab-content" style="display: none;">
+                    <h3 style="margin-bottom: 20px;">📊 Estatísticas de Moderação</h3>
+                    <div class="stats-grid">
+                        <div class="stat-box" style="background: #ffebee;">
+                            <div class="number" id="statBans" style="color: #e74c3c;">0</div>
+                            <div class="label">Banimentos</div>
+                        </div>
+                        <div class="stat-box" style="background: #fff3cd;">
+                            <div class="number" id="statKicks" style="color: #f39c12;">0</div>
+                            <div class="label">Expulsões</div>
+                        </div>
+                        <div class="stat-box" style="background: #fff8e1;">
+                            <div class="number" id="statWarns" style="color: #ff9800;">0</div>
+                            <div class="label">Avisos</div>
+                        </div>
+                        <div class="stat-box" style="background: #f3e5f5;">
+                            <div class="number" id="statTimeouts" style="color: #9c27b0;">0</div>
+                            <div class="label">Timeouts</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <button class="btn-primary" onclick="loadModStats()">🔄 Atualizar Estatísticas</button>
+                    </div>
                 </div>
             </div>
 
@@ -600,6 +863,362 @@
                 loadStats();
             } else if (tabName === 'contas') {
                 loadAccounts();
+            } else if (tabName === 'moderacao') {
+                loadModStats();
+            }
+        }
+
+        function switchModTab(tabName) {
+            // Remove ativa de todos os mod-tabs
+            document.querySelectorAll('.mod-tab-content').forEach(tab => tab.style.display = 'none');
+            document.querySelectorAll('#modtab-punicoes, #modtab-ferramentas, #modtab-historico, #modtab-stats').forEach(btn => btn.classList.remove('active'));
+
+            // Adiciona ativa ao tab selecionado
+            document.getElementById(`modtab-${tabName}-content`).style.display = 'block';
+            document.getElementById(`modtab-${tabName}`).classList.add('active');
+        }
+
+        // ==================== FUNÇÕES DE MODERAÇÃO ====================
+        
+        // BAN
+        async function executeBan() {
+            const userId = document.getElementById('banUserId').value;
+            const reason = document.getElementById('banReason').value;
+            const deleteDays = document.getElementById('banDeleteDays').value;
+
+            if (!userId || !reason) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/ban', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, reason, delete_days: parseInt(deleteDays) })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('✅ Usuário banido com sucesso!', 'success');
+                    document.getElementById('banUserId').value = '';
+                    document.getElementById('banReason').value = '';
+                    document.getElementById('banDeleteDays').value = '0';
+                    loadModStats();
+                } else {
+                    showToast(data.error || 'Erro ao banir usuário', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao banir usuário', 'error');
+            }
+        }
+
+        // KICK
+        async function executeKick() {
+            const userId = document.getElementById('kickUserId').value;
+            const reason = document.getElementById('kickReason').value;
+
+            if (!userId || !reason) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/kick', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, reason })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('✅ Usuário expulso com sucesso!', 'success');
+                    document.getElementById('kickUserId').value = '';
+                    document.getElementById('kickReason').value = '';
+                    loadModStats();
+                } else {
+                    showToast(data.error || 'Erro ao expulsar usuário', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao expulsar usuário', 'error');
+            }
+        }
+
+        // WARN
+        async function executeWarn() {
+            const userId = document.getElementById('warnUserId').value;
+            const reason = document.getElementById('warnReason').value;
+
+            if (!userId || !reason) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/warn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, reason })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('✅ Aviso registrado com sucesso!', 'success');
+                    document.getElementById('warnUserId').value = '';
+                    document.getElementById('warnReason').value = '';
+                    loadModStats();
+                } else {
+                    showToast(data.error || 'Erro ao avisar usuário', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao avisar usuário', 'error');
+            }
+        }
+
+        // TIMEOUT
+        async function executeTimeout() {
+            const userId = document.getElementById('timeoutUserId').value;
+            const duration = document.getElementById('timeoutDuration').value;
+            const reason = document.getElementById('timeoutReason').value;
+
+            if (!userId || !reason) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/timeout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, duration: parseInt(duration), reason })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast('✅ Timeout aplicado com sucesso!', 'success');
+                    document.getElementById('timeoutUserId').value = '';
+                    document.getElementById('timeoutReason').value = '';
+                    document.getElementById('timeoutDuration').value = '10';
+                } else {
+                    showToast(data.error || 'Erro ao aplicar timeout', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao aplicar timeout', 'error');
+            }
+        }
+
+        // CLEAR MESSAGES
+        async function executeClear() {
+            const channelId = document.getElementById('clearChannelId').value;
+            const amount = document.getElementById('clearAmount').value;
+
+            if (!channelId || !amount) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: channelId, amount: parseInt(amount) })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showToast(`✅ ${data.deleted} mensagens deletadas!`, 'success');
+                    document.getElementById('clearChannelId').value = '';
+                    document.getElementById('clearAmount').value = '10';
+                } else {
+                    showToast(data.error || 'Erro ao limpar mensagens', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao limpar mensagens', 'error');
+            }
+        }
+
+        // GET USER INFO
+        async function getUserInfo() {
+            const userId = document.getElementById('infoUserId').value;
+
+            if (!userId) {
+                showToast('Digite o ID do usuário!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/moderation/userinfo?user_id=${userId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const display = document.getElementById('userInfoDisplay');
+                    display.style.display = 'block';
+                    display.innerHTML = `
+                        <h4 style="margin-bottom: 10px;">${data.user.name}</h4>
+                        <p><strong>ID:</strong> ${data.user.id}</p>
+                        <p><strong>Entrou em:</strong> ${data.user.joined_at}</p>
+                        <p><strong>Conta criada:</strong> ${data.user.created_at}</p>
+                        <p><strong>Cargos:</strong> ${data.user.roles}</p>
+                        <p><strong>Punições:</strong> ${data.user.punishments}</p>
+                    `;
+                    showToast('✅ Informações carregadas!', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao buscar informações', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao buscar informações', 'error');
+            }
+        }
+
+        // GET SERVER INFO
+        async function getServerInfo() {
+            try {
+                const response = await fetch('/api/moderation/serverinfo');
+                const data = await response.json();
+
+                if (data.success) {
+                    const display = document.getElementById('serverInfoDisplay');
+                    display.style.display = 'block';
+                    display.innerHTML = `
+                        <h4 style="margin-bottom: 10px;">${data.server.name}</h4>
+                        <p><strong>Membros:</strong> ${data.server.members}</p>
+                        <p><strong>Canais:</strong> ${data.server.channels}</p>
+                        <p><strong>Cargos:</strong> ${data.server.roles}</p>
+                        <p><strong>Emojis:</strong> ${data.server.emojis}</p>
+                        <p><strong>Boosts:</strong> ${data.server.boosts}</p>
+                    `;
+                    showToast('✅ Informações carregadas!', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao buscar informações', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao buscar informações', 'error');
+            }
+        }
+
+        // LOCK/UNLOCK CHANNEL
+        async function lockChannel() {
+            const channelId = document.getElementById('lockChannelId').value;
+            if (!channelId) {
+                showToast('Digite o ID do canal!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/lock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: channelId, lock: true })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('✅ Canal trancado!', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao trancar canal', 'error');
+                }
+            } catch (error) {
+                showToast('Erro ao trancar canal', 'error');
+            }
+        }
+
+        async function unlockChannel() {
+            const channelId = document.getElementById('lockChannelId').value;
+            if (!channelId) {
+                showToast('Digite o ID do canal!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/moderation/lock', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: channelId, lock: false })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('✅ Canal destrancado!', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao destrancar canal', 'error');
+                }
+            } catch (error) {
+                showToast('Erro ao destrancar canal', 'error');
+            }
+        }
+
+        // GET USER HISTORY
+        async function getUserHistory() {
+            const userId = document.getElementById('historyUserId').value;
+
+            if (!userId) {
+                showToast('Digite o ID do usuário!', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/moderation/history?user_id=${userId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const display = document.getElementById('historyDisplay');
+                    
+                    if (data.punishments.length === 0) {
+                        display.innerHTML = '<p style="color: #2ecc71; padding: 20px; background: #f0fff0; border-radius: 5px;">✅ Usuário sem punições registradas!</p>';
+                    } else {
+                        let html = '<div style="margin-top: 20px;">';
+                        html += `<p style="margin-bottom: 15px;"><strong>Total de punições:</strong> ${data.punishments.length}</p>`;
+                        
+                        data.punishments.forEach((p, i) => {
+                            const color = p.type === 'ban' ? '#e74c3c' : p.type === 'kick' ? '#f39c12' : '#ff9800';
+                            html += `
+                                <div style="background: #f9f9f9; padding: 15px; margin-bottom: 10px; border-left: 4px solid ${color}; border-radius: 5px;">
+                                    <h4 style="margin-bottom: 5px; color: ${color};">${i+1}. ${p.type.toUpperCase()}</h4>
+                                    <p><strong>Motivo:</strong> ${p.reason}</p>
+                                    <p><strong>Data:</strong> ${p.timestamp}</p>
+                                    <p><strong>Moderador:</strong> ${p.moderator}</p>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                        display.innerHTML = html;
+                    }
+                    showToast('✅ Histórico carregado!', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao buscar histórico', 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showToast('Erro ao buscar histórico', 'error');
+            }
+        }
+
+        // LOAD MOD STATS
+        async function loadModStats() {
+            try {
+                const response = await fetch('/api/moderation/stats');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('statBans').textContent = data.stats.bans || 0;
+                    document.getElementById('statKicks').textContent = data.stats.kicks || 0;
+                    document.getElementById('statWarns').textContent = data.stats.warns || 0;
+                    document.getElementById('statTimeouts').textContent = data.stats.timeouts || 0;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
             }
         }
 
