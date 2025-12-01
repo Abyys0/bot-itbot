@@ -94,25 +94,7 @@ class TicketCreateView(discord.ui.View):
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botão para criar um novo ticket"""
         
-        # Verifica se o usuário já tem um ticket aberto
-        user_id = interaction.user.id
-        for ticket_id, ticket_info in ticket_manager.tickets.items():
-            if ticket_info["user_id"] == user_id and ticket_info["status"] == "open":
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        title="❌ Erro",
-                        description="Você já possui um ticket aberto!",
-                        color=COLORS["error"]
-                    ),
-                    ephemeral=True
-                )
-                return
-        
-        # Cria o ticket
-        ticket_number = ticket_manager.get_next_ticket_number()
-        ticket_id = ticket_manager.create_ticket(user_id, ticket_number)
-        
-        # Obtem o servidor
+        # Obtém o servidor
         guild = bot.get_guild(GUILD_ID)
         if not guild:
             await interaction.response.send_message(
@@ -125,100 +107,29 @@ class TicketCreateView(discord.ui.View):
             )
             return
         
-        # Obtém os cargos de staff necessários
-        staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS]
-        staff_roles = [role for role in staff_roles if role is not None]  # Filtra roles válidas
-        
-        # Cria o canal de ticket
         try:
-            # Obtém a categoria onde os tickets devem ser criados
-            category = guild.get_channel(TICKET_CATEGORY_ID)
-            if not category:
+            # Usa a função unificada para criar o ticket
+            channel, result_msg = await create_ticket_channel(guild, interaction.user, "Criado via botão Discord")
+            
+            if channel:
+                # Envia mensagem efêmera para o usuário
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="✅ Ticket Criado",
+                        description=f"Seu ticket foi criado com sucesso!\n\nAcesse: {channel.mention}",
+                        color=COLORS["success"]
+                    ),
+                    ephemeral=True
+                )
+            else:
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         title="❌ Erro",
-                        description="Categoria de tickets não encontrada!",
+                        description=result_msg,
                         color=COLORS["error"]
                     ),
                     ephemeral=True
                 )
-                return
-            
-            # Permissões padrão: sem acesso
-            overwrites = {
-                guild.default_role: discord.PermissionOverwrite(
-                    read_messages=False,
-                    send_messages=False,
-                    view_channel=False
-                ),
-                interaction.user: discord.PermissionOverwrite(
-                    read_messages=True,
-                    send_messages=True,
-                    view_channel=True,
-                    attach_files=True,
-                    embed_links=True
-                ),
-                guild.me: discord.PermissionOverwrite(
-                    read_messages=True,
-                    send_messages=True,
-                    view_channel=True,
-                    manage_channels=True,
-                    manage_permissions=True
-                )
-            }
-            
-            # Adiciona permissão para cada cargo de staff
-            for staff_role in staff_roles:
-                overwrites[staff_role] = discord.PermissionOverwrite(
-                    read_messages=True,
-                    send_messages=True,
-                    manage_messages=True,
-                    view_channel=True,
-                    attach_files=True,
-                    embed_links=True
-                )
-            
-            # Cria o canal com permissões restritas
-            channel = await guild.create_text_channel(
-                name=f"ticket-{ticket_number}",
-                overwrites=overwrites,
-                category=category,  # Cria na categoria especificada
-                topic=f"Ticket #{ticket_number} - Aberto por {interaction.user.mention}"
-            )
-            
-            # Atualiza o ticket com o channel ID
-            ticket_manager.set_ticket_channel(ticket_id, channel.id)
-            
-            # Envia mensagem no canal do ticket
-            embed_ticket = discord.Embed(
-                title=f"🎫 Ticket #{ticket_number}",
-                description=f"Olá {interaction.user.mention}!\n\nObrigado por abrir um ticket. Nossa equipe de suporte entrará em contato em breve.",
-                color=COLORS["info"]
-            )
-            embed_ticket.add_field(name="Status", value="🟢 Aberto", inline=False)
-            embed_ticket.add_field(name="Criado por", value=interaction.user.mention, inline=False)
-            embed_ticket.set_footer(text=f"Ticket ID: {ticket_id}")
-            
-            await channel.send(embed=embed_ticket, view=TicketPanelView(bot, ticket_id, interaction.user.id))
-            
-            # Envia mensagem efêmera para o usuário
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    title="✅ Ticket Criado",
-                    description=f"Seu ticket foi criado com sucesso!\n\nAcesse: {channel.mention}",
-                    color=COLORS["success"]
-                ),
-                ephemeral=True
-            )
-            
-            # Envia log
-            await send_log(
-                f"✅ Novo ticket criado",
-                f"**Ticket:** #{ticket_number}\n**Usuário:** {interaction.user.mention}\n**Canal:** {channel.mention}",
-                COLORS["success"]
-            )
-            
-            logger.info(f"Ticket #{ticket_number} criado por {interaction.user} ({interaction.user.id})")
         
         except Exception as e:
             logger.error(f"Erro ao criar ticket: {e}")
@@ -580,6 +491,105 @@ class TicketPanelView(discord.ui.View):
 
 
 # ==================== FUNÇÕES AUXILIARES ====================
+
+async def create_ticket_channel(guild, user, reason="Ticket criado via painel"):
+    """Função independente para criar um canal de ticket"""
+    try:
+        # Verifica se o usuário já tem um ticket aberto
+        user_id = user.id
+        for ticket_id, ticket_info in ticket_manager.tickets.items():
+            if ticket_info["user_id"] == str(user_id) and ticket_info["status"] == "open":
+                return None, f"Usuário {user.display_name} já possui um ticket aberto!"
+        
+        # Cria o ticket no manager
+        ticket_data = ticket_manager.create_ticket(str(user_id), reason)
+        if not ticket_data:
+            return None, "Erro ao criar ticket no sistema"
+            
+        ticket_number = ticket_data.get('number')
+        
+        # Obtém os cargos de staff necessários
+        staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS]
+        staff_roles = [role for role in staff_roles if role is not None]
+        
+        # Obtém a categoria onde os tickets devem ser criados
+        category = guild.get_channel(TICKET_CATEGORY_ID)
+        if not category:
+            return None, "Categoria de tickets não encontrada!"
+        
+        # Permissões do canal
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(
+                read_messages=False,
+                send_messages=False,
+                view_channel=False
+            ),
+            user: discord.PermissionOverwrite(
+                read_messages=True,
+                send_messages=True,
+                view_channel=True,
+                attach_files=True,
+                embed_links=True
+            ),
+            guild.me: discord.PermissionOverwrite(
+                read_messages=True,
+                send_messages=True,
+                view_channel=True,
+                manage_channels=True,
+                manage_permissions=True
+            )
+        }
+        
+        # Adiciona permissão para cada cargo de staff
+        for staff_role in staff_roles:
+            overwrites[staff_role] = discord.PermissionOverwrite(
+                read_messages=True,
+                send_messages=True,
+                manage_messages=True,
+                view_channel=True,
+                attach_files=True,
+                embed_links=True
+            )
+        
+        # Cria o canal
+        channel = await guild.create_text_channel(
+            name=f"ticket-{ticket_number}",
+            overwrites=overwrites,
+            category=category,
+            topic=f"Ticket #{ticket_number} - Aberto por {user.mention}"
+        )
+        
+        # Atualiza o ticket com o channel ID
+        ticket_id = f"ticket_{ticket_number}"
+        ticket_manager.set_ticket_channel(ticket_id, channel.id)
+        
+        # Envia mensagem no canal do ticket
+        embed_ticket = discord.Embed(
+            title=f"🎫 Ticket #{ticket_number}",
+            description=f"Olá {user.mention}!\n\nObrigado por abrir um ticket. Nossa equipe de suporte entrará em contato em breve.",
+            color=COLORS["info"]
+        )
+        embed_ticket.add_field(name="Status", value="🟢 Aberto", inline=False)
+        embed_ticket.add_field(name="Criado por", value=user.mention, inline=False)
+        embed_ticket.add_field(name="Motivo", value=reason, inline=False)
+        embed_ticket.set_footer(text=f"Ticket ID: {ticket_id}")
+        
+        await channel.send(embed=embed_ticket, view=TicketPanelView(bot, ticket_id, user.id))
+        
+        # Envia log
+        await send_log(
+            f"✅ Novo ticket criado",
+            f"**Ticket:** #{ticket_number}\n**Usuário:** {user.mention}\n**Canal:** {channel.mention}\n**Motivo:** {reason}",
+            COLORS["success"]
+        )
+        
+        logger.info(f"🎫 Ticket #{ticket_number} criado para {user.display_name} via painel - Canal: {channel.name}")
+        
+        return channel, f"Ticket #{ticket_number} criado com sucesso!"
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao criar canal de ticket: {e}")
+        return None, f"Erro ao criar ticket: {str(e)}"
 
 async def send_log(title: str, description: str, color: int):
     """Envia um log para o canal de logs"""
@@ -990,15 +1000,15 @@ def create_ticket_panel():
             # Log antes de criar
             logger.info(f"🎫 Criando ticket via painel para {user.display_name} (ID: {user_id})")
             
-            # Cria o ticket usando o sistema existente
-            ticket_data = ticket_manager.create_ticket(str(user_id), reason)
+            # Cria o ticket com canal real no Discord
+            channel, result_msg = await create_ticket_channel(guild, user, reason)
             
-            if ticket_data:
-                logger.info(f"✅ Ticket #{ticket_data.get('number')} criado com sucesso")
-                return True, f"Ticket #{ticket_data.get('number')} criado com sucesso para {user.display_name}"
+            if channel:
+                logger.info(f"✅ {result_msg} - Canal: {channel.name}")
+                return True, f"{result_msg} - Canal: {channel.mention}"
             else:
-                logger.error(f"❌ Erro ao criar ticket no sistema para {user.display_name}")
-                return False, "Erro ao criar ticket no sistema"
+                logger.error(f"❌ {result_msg}")
+                return False, result_msg
         
         # Executa a função assíncrona
         loop = asyncio.new_event_loop()
