@@ -662,6 +662,8 @@ async def send_detailed_log(ticket_number: int, ticket_creator, closed_by, creat
 @bot.event
 async def on_ready():
     """Evento disparado quando o bot está pronto"""
+    global bot_instance
+    bot_instance = bot  # Define bot_instance para uso na API
     logger.info(f"Bot conectado como {bot.user}")
     
     try:
@@ -1043,7 +1045,7 @@ async def on_command_error(ctx, error):
 
 def main():
     """Função principal para executar o bot com auto-restart e API"""
-    global api_bot_instance
+    global bot_instance
     
     if not BOT_TOKEN or BOT_TOKEN == "seu_token_aqui":
         print("❌ ERRO: BOT_TOKEN não configurado!")
