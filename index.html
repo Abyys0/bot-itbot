@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 iBot - Painel de Controle</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 15px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .tab-btn:hover {
+            color: #667eea;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ==================== OVERVIEW ====================*/
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-box .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-box .label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        /* ==================== TICKETS ====================*/
+        #ticketsContainer {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .ticket-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #2ecc71;
+            transition: all 0.3s;
+        }
+
+        .ticket-card:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .ticket-card.closed {
+            border-left-color: #e74c3c;
+        }
+
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .ticket-number {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .ticket-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .ticket-status.open {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .ticket-status.closed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .ticket-info {
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-notify {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-notify:hover {
+            background: #2980b9;
+        }
+
+        .btn-add-member {
+            background: #9b59b6;
+            color: white;
+        }
+
+        .btn-add-member:hover {
+            background: #8e44ad;
+        }
+
+        .btn-close {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-close:hover {
+            background: #c0392b;
+        }
+
+        /* ==================== FORMS ====================*/
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: inherit;
+            font-size: 1em;
+            transition: border 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        /* ==================== MODALS ====================*/
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
+        /* ==================== TOAST ====================*/
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            z-index: 2000;
+            animation: slideIn 0.3s;
+        }
+
+        .toast.success {
+            background: #2ecc71;
+        }
+
+        .toast.error {
+            background: #e74c3c;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* ==================== FUNÇÕES ====================*/
+        .funcoes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .funcao-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .funcao-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .funcao-card h3 {
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .funcao-card p {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .emoji {
+            font-size: 1.5em;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        footer {
+            background: #f5f5f5;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 iBot - Painel de Controle</h1>
+            <p>Sistema de Gestão de Tickets Discord</p>
+        </header>
+
+        <div class="content">
+            <!-- Navegação de Abas -->
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
+                <button class="tab-btn" onclick="switchTab('tickets')">🎫 Tickets</button>
+                <button class="tab-btn" onclick="switchTab('criar')">➕ Criar Ticket</button>
+                <button class="tab-btn" onclick="switchTab('funcoes')">⚙️ Funções</button>
+            </div>
+
+            <!-- TAB: Overview -->
+            <div id="tab-overview" class="tab-content active">
+                <h2>📊 Visão Geral</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="number" id="statTotal">0</div>
+                        <div class="label">Total de Tickets</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number" id="statOpen">0</div>
+                        <div class="label">Tickets Abertos</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number" id="statClosed">0</div>
+                        <div class="label">Tickets Fechados</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="number" id="statPercent">0%</div>
+                        <div class="label">% Abertos</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: Tickets -->
+            <div id="tab-tickets" class="tab-content">
+                <h2>🎫 Todos os Tickets</h2>
+                <div id="ticketsContainer">
+                    <p>Carregando...</p>
+                </div>
+            </div>
+
+            <!-- TAB: Criar Ticket -->
+            <div id="tab-criar" class="tab-content">
+                <h2>➕ Criar Novo Ticket</h2>
+                <div style="max-width: 500px;">
+                    <div class="form-group">
+                        <label>ID do Usuário (Discord)</label>
+                        <input type="text" id="userId" placeholder="123456789">
+                    </div>
+                    <div class="form-group">
+                        <label>Motivo</label>
+                        <textarea id="reason" rows="5" placeholder="Descreva o motivo do ticket..."></textarea>
+                    </div>
+                    <button class="btn-primary" onclick="createTicket()">Criar Ticket</button>
+                </div>
+            </div>
+
+            <!-- TAB: Funções -->
+            <div id="tab-funcoes" class="tab-content">
+                <h2>⚙️ Funções do Painel</h2>
+                <div class="funcoes-grid"></div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p><strong>iBot v1.0</strong> - Painel de Controle de Tickets</p>
+            <p style="margin-top: 1rem; opacity: 0.8;">Conectado ao Bot Discord em tempo real</p>
+        </footer>
+    </div>
+
+    <!-- Modal para Ações -->
+    <div id="actionModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Ação</h2>
+            <div id="modalBody"></div>
+            <div class="modal-buttons">
+                <button class="btn-primary" onclick="submitAction()">Confirmar</button>
+                <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais
+        let currentAction = null;
+        let currentTicketId = null;
+
+        // Inicializa o painel
+        window.addEventListener('load', function() {
+            loadStats();
+            loadTickets();
+            populateFuncoes();
+        });
+
+        // Atualiza a cada 10 segundos
+        setInterval(loadStats, 10000);
+        setInterval(loadTickets, 10000);
+
+        // ==================== NAVEGAÇÃO ====================
+        function switchTab(tabName) {
+            // Remove ativa de todos os tabs
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+            // Adiciona ativa ao tab selecionado
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+            event.target.classList.add('active');
+
+            if (tabName === 'tickets') {
+                loadTickets();
+            } else if (tabName === 'overview') {
+                loadStats();
+            }
+        }
+
+        // ==================== CARREGAMENTO DE DADOS ====================
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('statTotal').textContent = data.stats.total_tickets;
+                    document.getElementById('statOpen').textContent = data.stats.open_tickets;
+                    document.getElementById('statClosed').textContent = data.stats.closed_tickets;
+                    document.getElementById('statPercent').textContent = data.stats.open_percentage + '%';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
+            }
+        }
+
+        async function loadTickets() {
+            try {
+                const response = await fetch('/api/tickets');
+                const data = await response.json();
+
+                if (data.success) {
+                    displayTickets(data.tickets);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar tickets:', error);
+            }
+        }
+
+        function displayTickets(tickets) {
+            const container = document.getElementById('ticketsContainer');
+            
+            if (tickets.length === 0) {
+                container.innerHTML = '<p>Nenhum ticket encontrado</p>';
+                return;
+            }
+
+            container.innerHTML = tickets.map(ticket => `
+                <div class="ticket-card ${ticket.status === 'closed' ? 'closed' : ''}">
+                    <div class="ticket-header">
+                        <span class="ticket-number">#${ticket.number}</span>
+                        <span class="ticket-status ${ticket.status}">${ticket.status === 'open' ? '🟢 Aberto' : '🔴 Fechado'}</span>
+                    </div>
+                    <div class="ticket-info"><strong>Usuário:</strong> ${ticket.user_id}</div>
+                    <div class="ticket-info"><strong>Criado:</strong> ${new Date(ticket.created_at).toLocaleString('pt-BR')}</div>
+                    ${ticket.status === 'closed' ? `<div class="ticket-info"><strong>Fechado:</strong> ${new Date(ticket.closed_at).toLocaleString('pt-BR')}</div>` : ''}
+                    <div class="action-buttons">
+                        <button class="btn-notify" onclick="openModal('notify', '${ticket.id}')">🔔 Notificar</button>
+                        <button class="btn-add-member" onclick="openModal('add-member', '${ticket.id}')">👥 Adicionar</button>
+                        ${ticket.status === 'open' ? `<button class="btn-close" onclick="openModal('close', '${ticket.id}')">🔒 Fechar</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== AÇÕES ====================
+        function createTicket() {
+            const userId = document.getElementById('userId').value;
+            const reason = document.getElementById('reason').value;
+
+            if (!userId || !reason) {
+                showToast('Preencha todos os campos!', 'error');
+                return;
+            }
+
+            fetch('/api/ticket/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: userId, reason: reason })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`Ticket #${data.ticket_number} criado!`, 'success');
+                    document.getElementById('userId').value = '';
+                    document.getElementById('reason').value = '';
+                    loadTickets();
+                    loadStats();
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(e => showToast('Erro ao criar ticket', 'error'));
+        }
+
+        // ==================== MODAIS ====================
+        function openModal(action, ticketId) {
+            currentAction = action;
+            currentTicketId = ticketId;
+
+            const modal = document.getElementById('actionModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+
+            if (action === 'notify') {
+                title.textContent = 'Notificar Equipe';
+                body.innerHTML = '<p>Tem certeza que deseja notificar a equipe sobre este ticket?</p>';
+            } else if (action === 'add-member') {
+                title.textContent = 'Adicionar Membro';
+                body.innerHTML = `<div class="form-group">
+                    <label>ID do Membro (Discord)</label>
+                    <input type="text" id="memberId" placeholder="123456789" />
+                </div>`;
+            } else if (action === 'close') {
+                title.textContent = 'Fechar Ticket';
+                body.innerHTML = `<div class="form-group">
+                    <label>Motivo do Fechamento</label>
+                    <textarea id="closeReason" placeholder="Descreva o motivo..." rows="3"></textarea>
+                </div>`;
+            }
+
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('actionModal').style.display = 'none';
+        }
+
+        function submitAction() {
+            if (currentAction === 'notify') {
+                fetch(`/api/ticket/${currentTicketId}/notify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    showToast(data.message, data.success ? 'success' : 'error');
+                    closeModal();
+                    loadTickets();
+                });
+            } else if (currentAction === 'add-member') {
+                const memberId = document.getElementById('memberId').value;
+                if (!memberId) {
+                    showToast('Digite o ID do membro!', 'error');
+                    return;
+                }
+                fetch(`/api/ticket/${currentTicketId}/add-member`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ member_id: memberId })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    showToast(data.message, data.success ? 'success' : 'error');
+                    closeModal();
+                    loadTickets();
+                });
+            } else if (currentAction === 'close') {
+                const reason = document.getElementById('closeReason').value;
+                fetch(`/api/ticket/${currentTicketId}/close`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    showToast(data.message, data.success ? 'success' : 'error');
+                    closeModal();
+                    loadTickets();
+                    loadStats();
+                });
+            }
+        }
+
+        // ==================== FUNÇÕES ====================
+        function populateFuncoes() {
+            const funcoes = [
+                { emoji: '🎫', titulo: 'Criar Tickets', desc: 'Abra novos tickets de suporte no painel' },
+                { emoji: '🔔', titulo: 'Notificar Equipe', desc: 'Notifique os staffs sobre tickets' },
+                { emoji: '👥', titulo: 'Adicionar Membros', desc: 'Adicione usuários aos tickets' },
+                { emoji: '🔒', titulo: 'Fechar Tickets', desc: 'Encerre tickets com motivo' },
+                { emoji: '📊', titulo: 'Ver Estatísticas', desc: 'Acompanhe métricas em tempo real' },
+                { emoji: '🎤', titulo: 'Criar Call', desc: 'Crie canais de voz para conversa' }
+            ];
+
+            const container = document.getElementById('tab-funcoes').querySelector('.funcoes-grid');
+            container.innerHTML = funcoes.map(f => `
+                <div class="funcao-card">
+                    <h3><span class="emoji">${f.emoji}</span>${f.titulo}</h3>
+                    <p>${f.desc}</p>
+                </div>
+            `).join('');
+        }
+
+        // ==================== UTILITÁRIOS ====================
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Fecha modal ao clicar fora
+        window.onclick = function(event) {
+            const modal = document.getElementById('actionModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>
