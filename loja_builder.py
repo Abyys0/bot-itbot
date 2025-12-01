@@ -396,18 +396,8 @@ class LojaBuilder:
         
         # ==================== PAINEL: TICKETS ====================
         if 'ticket' in self.created_channels:
-            # Criar a view manualmente sem importar do bot
-            class TicketCreateView(discord.ui.View):
-                def __init__(self, bot_instance):
-                    super().__init__(timeout=None)
-                    self.bot_instance = bot_instance
-                
-                @discord.ui.button(label="Abrir Ticket", style=discord.ButtonStyle.green, emoji="🎫")
-                async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-                    await interaction.response.send_message(
-                        "Sistema de tickets em configuração. Use o painel web para criar tickets!",
-                        ephemeral=True
-                    )
+            # Importar a classe TicketCreateView do bot
+            from bot import TicketCreateView
             
             embed = discord.Embed(
                 title="📧 Sistema de Atendimento",
