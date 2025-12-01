@@ -1308,6 +1308,18 @@ async def ajuda_backup(ctx):
     await ctx.send(embed=embed)
 
 
+@bot.command(name="painel_mod")
+@commands.has_permissions(manage_guild=True)
+async def painel_mod(ctx):
+    """Cria um painel de moderação profissional no canal atual"""
+    from mod_panel import send_mod_panel
+    
+    try:
+        await send_mod_panel(ctx.channel)
+        await ctx.message.delete()  # Remove o comando
+    except Exception as e:
+        await ctx.send(f"❌ Erro ao criar painel: {e}", delete_after=5)
+
 @bot.command(name="nova_loja")
 @commands.has_permissions(administrator=True)
 async def nova_loja(ctx, confirmar: str = None):
