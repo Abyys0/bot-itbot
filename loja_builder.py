@@ -1,6 +1,8 @@
 import discord
 import asyncio
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -526,3 +528,42 @@ class LojaBuilder:
             results['created']['messages'] += 1
         
         logger.info(f"✅ Painéis configurados: {results['created']['messages']} mensagens enviadas")
+        
+        # Salvar IDs dos canais importantes para auto-detecção
+        await self._save_channel_config(guild)
+    
+    async def _save_channel_config(self, guild: discord.Guild):
+        """Salva os IDs dos canais criados para auto-detecção"""
+        try:
+            # Buscar categoria de atendimento
+            support_category = None
+            for category in guild.categories:
+                if 'atendimento' in category.name.lower():
+                    support_category = category
+                    break
+            
+            # Buscar canal de logs (staff)
+            log_channel = None
+            for channel in guild.text_channels:
+                if 'logs' in channel.name.lower():
+                    log_channel = channel
+                    break
+            
+            config = {
+                "ticket_channel_id": self.created_channels.get('ticket').id if 'ticket' in self.created_channels else 0,
+                "ticket_category_id": support_category.id if support_category else 0,
+                "log_channel_id": log_channel.id if log_channel else 0,
+                "announcements_channel_id": self.created_channels.get('announcements').id if 'announcements' in self.created_channels else 0,
+                "accounts_channel_id": self.created_channels.get('accounts').id if 'accounts' in self.created_channels else 0
+            }
+            
+            with open('channel_config.json', 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"✅ Configuração de canais salva: {config}")
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar configuração de canais: {e}")
+        
+        # Salvar IDs dos canais importantes para auto-detecção
+        await self._save_channel_config(guild)

@@ -44,6 +44,85 @@ ticket_manager = TicketManager(bot)
 backup_manager = BackupManager()
 loja_builder = LojaBuilder(bot)
 
+# ==================== AUTO-DETECÇÃO DE CANAIS ====================
+
+async def auto_detect_channels():
+    """Auto-detecta canais importantes se não estiverem configurados"""
+    import json
+    from config import GUILD_ID
+    
+    guild = bot.get_guild(GUILD_ID)
+    if not guild:
+        logger.warning("⚠️ Servidor não encontrado para auto-detecção")
+        return
+    
+    # Verificar se já existe configuração válida
+    try:
+        if os.path.exists('channel_config.json'):
+            with open('channel_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                if config.get('ticket_channel_id', 0) > 0:
+                    logger.info("✅ Canais já configurados via channel_config.json")
+                    return
+    except Exception as e:
+        logger.warning(f"⚠️ Erro ao verificar channel_config.json: {e}")
+    
+    # Auto-detectar por nome
+    logger.info("🔍 Auto-detectando canais por nome...")
+    
+    config = {
+        "ticket_channel_id": 0,
+        "ticket_category_id": 0,
+        "log_channel_id": 0,
+        "announcements_channel_id": 0,
+        "accounts_channel_id": 0
+    }
+    
+    # Buscar canais
+    for channel in guild.text_channels:
+        name = channel.name.lower()
+        if 'ticket' in name and config['ticket_channel_id'] == 0:
+            config['ticket_channel_id'] = channel.id
+            logger.info(f"✅ Canal de tickets detectado: #{channel.name} ({channel.id})")
+        elif 'anúncio' in name or 'anuncio' in name and config['announcements_channel_id'] == 0:
+            config['announcements_channel_id'] = channel.id
+            logger.info(f"✅ Canal de anúncios detectado: #{channel.name} ({channel.id})")
+        elif 'conta' in name and 'roblox' in name and config['accounts_channel_id'] == 0:
+            config['accounts_channel_id'] = channel.id
+            logger.info(f"✅ Canal de contas detectado: #{channel.name} ({channel.id})")
+        elif 'log' in name and config['log_channel_id'] == 0:
+            config['log_channel_id'] = channel.id
+            logger.info(f"✅ Canal de logs detectado: #{channel.name} ({channel.id})")
+    
+    # Buscar categoria de atendimento
+    for category in guild.categories:
+        if 'atendimento' in category.name.lower() and config['ticket_category_id'] == 0:
+            config['ticket_category_id'] = category.id
+            logger.info(f"✅ Categoria de tickets detectada: {category.name} ({category.id})")
+            break
+    
+    # Salvar configuração detectada
+    if any(v > 0 for v in config.values()):
+        try:
+            with open('channel_config.json', 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            logger.info("✅ Configuração de canais salva automaticamente")
+            
+            # Recarregar config
+            from config import load_channel_ids
+            global TICKET_CHANNEL_ID, TICKET_CATEGORY_ID, LOG_CHANNEL_ID, ANNOUNCEMENTS_CHANNEL_ID, ACCOUNTS_CHANNEL_ID
+            _config = load_channel_ids()
+            TICKET_CHANNEL_ID = _config.get('ticket_channel_id', 0)
+            TICKET_CATEGORY_ID = _config.get('ticket_category_id', 0)
+            LOG_CHANNEL_ID = _config.get('log_channel_id', 0)
+            ANNOUNCEMENTS_CHANNEL_ID = _config.get('announcements_channel_id', 0)
+            ACCOUNTS_CHANNEL_ID = _config.get('accounts_channel_id', 0)
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar configuração detectada: {e}")
+    else:
+        logger.warning("⚠️ Nenhum canal foi detectado automaticamente")
+
 # ==================== MODAL PARA MOTIVO ====================
 
 class CloseTicketModal(discord.ui.Modal, title="Fechar Ticket"):
@@ -751,6 +830,9 @@ async def on_ready():
     global bot_instance
     bot_instance = bot  # Define bot_instance para uso na API
     logger.info(f"Bot conectado como {bot.user}")
+    
+    # Auto-detectar canais ao iniciar
+    await auto_detect_channels()
     
     try:
         # Sincroniza comandos slash
