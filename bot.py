@@ -37,8 +37,6 @@ def health():
 def send_announcement():
     """Envia um anúncio no canal configurado"""
     try:
-        from config import ANNOUNCEMENTS_CHANNEL_ID
-        
         if not bot_instance:
             return jsonify({'success': False, 'error': 'Bot não está conectado'}), 503
         
@@ -48,12 +46,31 @@ def send_announcement():
         if not message:
             return jsonify({'success': False, 'error': 'Mensagem é obrigatória'}), 400
         
-        if ANNOUNCEMENTS_CHANNEL_ID == 0:
-            return jsonify({'success': False, 'error': 'Canal de anúncios não configurado'}), 400
-        
         async def post_announcement():
             try:
-                channel = bot_instance.get_channel(ANNOUNCEMENTS_CHANNEL_ID)
+                # Recarregar configuração em tempo real
+                import json
+                channel_id = 0
+                
+                if os.path.exists('channel_config.json'):
+                    with open('channel_config.json', 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                        channel_id = config.get('announcements_channel_id', 0)
+                
+                # Se não encontrou no JSON, buscar por nome
+                if channel_id == 0:
+                    for guild in bot_instance.guilds:
+                        for ch in guild.text_channels:
+                            if 'anúncio' in ch.name.lower() or 'anuncio' in ch.name.lower():
+                                channel_id = ch.id
+                                break
+                        if channel_id != 0:
+                            break
+                
+                if channel_id == 0:
+                    return False, "Canal de anúncios não encontrado. Use !nova_loja para criar estrutura automaticamente."
+                
+                channel = bot_instance.get_channel(channel_id)
                 if not channel:
                     return False, "Canal de anúncios não encontrado"
                 
