@@ -1494,7 +1494,7 @@
             }
 
             try {
-                const response = await fetch('/api/account/add', {
+                const response = await fetch('/api/accounts/add', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1502,7 +1502,7 @@
                         description: description,
                         price: price,
                         image_url: image_url,
-                        additional_info: additional_info
+                        info: additional_info
                     })
                 });
 
@@ -1531,7 +1531,7 @@
             }
 
             try {
-                const response = await fetch(`/api/account/${accountId}`, {
+                const response = await fetch(`/api/accounts/${accountId}`, {
                     method: 'DELETE'
                 });
 
