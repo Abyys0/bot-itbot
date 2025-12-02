@@ -87,6 +87,50 @@ def add_account():
         with open('accounts.json', 'w', encoding='utf-8') as f:
             json.dump(accounts, f, ensure_ascii=False, indent=2)
         
+        # Postar no Discord
+        async def post_to_discord():
+            try:
+                from config import load_channel_ids
+                config = load_channel_ids()
+                accounts_channel_id = config.get('accounts_channel_id', 0)
+                
+                if accounts_channel_id == 0:
+                    return False, "Canal de contas não configurado"
+                
+                channel = bot_instance.get_channel(accounts_channel_id)
+                if not channel:
+                    return False, "Canal de contas não encontrado"
+                
+                # Criar embed
+                embed = discord.Embed(
+                    title=f"🎮 {title}",
+                    description=description,
+                    color=0x00ff00
+                )
+                embed.add_field(name="💰 Preço", value=price, inline=True)
+                embed.add_field(name="📊 Status", value="✅ Disponível", inline=True)
+                if info:
+                    embed.add_field(name="ℹ️ Informações", value=info, inline=False)
+                if image_url:
+                    embed.set_thumbnail(url=image_url)
+                embed.set_footer(text=f"ID: {new_account['id']}")
+                
+                # Criar botão de compra COM OS DADOS DA CONTA
+                view = BuyAccountView(str(new_account['id']), new_account)
+                await channel.send(embed=embed, view=view)
+                
+                return True, "Conta postada no Discord"
+            except Exception as e:
+                return False, str(e)
+        
+        if bot_instance:
+            try:
+                loop = bot_instance.loop
+                future = asyncio.run_coroutine_threadsafe(post_to_discord(), loop)
+                success, message = future.result(timeout=10)
+            except:
+                pass  # Continua mesmo se falhar postar no Discord
+        
         return jsonify({'success': True, 'account': new_account})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
