@@ -8,8 +8,10 @@ from config import (
 from ticket_manager import TicketManager
 from backup_manager import BackupManager
 from loja_builder import LojaBuilder
+from pix_manager import PixManager
 import logging
 import asyncio
+import json
 from datetime import datetime
 
 # Keep-alive e painel web integrado
@@ -110,6 +112,88 @@ def delete_account(account_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+# ==================== ROTAS DE PIX ====================
+
+@app.route('/api/pix/config', methods=['GET'])
+def get_pix_config():
+    """Obtém configuração do PIX"""
+    try:
+        config = pix_manager.config
+        # Oculta parte da chave PIX por segurança
+        if config.get('pix_key'):
+            key = config['pix_key']
+            if len(key) > 8:
+                config['pix_key_masked'] = key[:4] + '****' + key[-4:]
+            else:
+                config['pix_key_masked'] = '****'
+        return jsonify({'success': True, 'config': config})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/pix/config', methods=['POST'])
+def update_pix_config():
+    """Atualiza configuração do PIX"""
+    try:
+        data = request.get_json()
+        pix_key = data.get('pix_key')
+        pix_name = data.get('pix_name')
+        pix_city = data.get('pix_city', 'SAO PAULO')
+        
+        if not pix_key or not pix_name:
+            return jsonify({'success': False, 'error': 'Chave PIX e nome são obrigatórios'})
+        
+        pix_manager.update_config(pix_key, pix_name, pix_city)
+        return jsonify({'success': True, 'message': 'Configuração PIX atualizada com sucesso'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/pix/payments', methods=['GET'])
+def get_all_payments():
+    """Lista todos os pagamentos"""
+    try:
+        payments = pix_manager.get_all_payments()
+        return jsonify({'success': True, 'payments': payments})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/pix/payments/pending', methods=['GET'])
+def get_pending_payments():
+    """Lista pagamentos pendentes"""
+    try:
+        payments = pix_manager.get_pending_payments()
+        return jsonify({'success': True, 'payments': payments})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/pix/payment/<payment_id>/confirm', methods=['POST'])
+def confirm_payment(payment_id):
+    """Confirma um pagamento"""
+    try:
+        data = request.get_json()
+        staff_id = data.get('staff_id', 'admin')
+        
+        success, message = pix_manager.confirm_payment(payment_id, staff_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/pix/payment/<payment_id>/cancel', methods=['POST'])
+def cancel_payment(payment_id):
+    """Cancela um pagamento"""
+    try:
+        success, message = pix_manager.cancel_payment(payment_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'error': message}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 # Rota principal - serve o painel web
 @app.route('/')
 def home():
@@ -206,6 +290,7 @@ bot = commands.Bot(command_prefix=BOT_PREFIX, intents=intents)
 ticket_manager = TicketManager(bot)
 backup_manager = BackupManager()
 loja_builder = LojaBuilder(bot)
+pix_manager = PixManager()
 
 # ==================== AUTO-DETECÇÃO DE CANAIS ====================
 
@@ -334,16 +419,77 @@ class AddMemberModal(discord.ui.Modal, title="Adicionar Membro"):
 
 # ==================== VIEWS (Botões) ====================
 
+class PixPaymentView(discord.ui.View):
+    """View para pagamento PIX"""
+    
+    def __init__(self, payment_id: str, pix_key: str, amount: float):
+        super().__init__(timeout=None)
+        self.payment_id = payment_id
+        self.pix_key = pix_key
+        self.amount = amount
+    
+    @discord.ui.button(label="✅ Já Paguei", style=discord.ButtonStyle.green, emoji="💳")
+    async def payment_done(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Botão para notificar staff que pagou"""
+        guild = bot.get_guild(GUILD_ID)
+        staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS if guild and guild.get_role(role_id)]
+        staff_mentions = " ".join([role.mention for role in staff_roles])
+        
+        embed = discord.Embed(
+            title="💰 Pagamento Realizado - Aguardando Confirmação",
+            description=f"{interaction.user.mention} informou que realizou o pagamento!",
+            color=COLORS["warning"],
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="💳 ID do Pagamento", value=f"`{self.payment_id}`", inline=False)
+        embed.add_field(name="💰 Valor", value=f"R$ {self.amount:.2f}", inline=True)
+        embed.add_field(name="⏰ Status", value="⏳ Aguardando confirmação da equipe", inline=False)
+        
+        await interaction.response.send_message(
+            content=f"🔔 {staff_mentions}",
+            embed=embed
+        )
+        
+        await interaction.followup.send(
+            embed=discord.Embed(
+                title="✅ Notificação Enviada",
+                description="A equipe foi notificada e verificará seu pagamento em breve!",
+                color=COLORS["success"]
+            ),
+            ephemeral=True
+        )
+    
+    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.red)
+    async def cancel_payment(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Botão para cancelar pagamento"""
+        success, message = pix_manager.cancel_payment(self.payment_id)
+        
+        if success:
+            embed = discord.Embed(
+                title="❌ Pagamento Cancelado",
+                description="O pagamento foi cancelado. Você pode criar um novo ticket se mudar de ideia.",
+                color=COLORS["error"]
+            )
+        else:
+            embed = discord.Embed(
+                title="⚠️ Erro",
+                description=message,
+                color=COLORS["warning"]
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class BuyAccountView(discord.ui.View):
     """View com botão de compra de conta"""
     
-    def __init__(self, account_id: str):
+    def __init__(self, account_id: str, account_data: dict = None):
         super().__init__(timeout=None)
         self.account_id = account_id
+        self.account_data = account_data
     
     @discord.ui.button(label="Comprar Conta", style=discord.ButtonStyle.green, emoji="🛒")
     async def buy_account(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Botão para comprar conta - abre ticket automaticamente"""
+        """Botão para comprar conta - abre ticket com pagamento PIX"""
         
         guild = bot.get_guild(GUILD_ID)
         if not guild:
@@ -376,14 +522,93 @@ class BuyAccountView(discord.ui.View):
                     ephemeral=True
                 )
                 
-                # Envia mensagem no ticket sobre a conta
-                await channel.send(
-                    embed=discord.Embed(
-                        title="🛒 Interesse em Compra de Conta",
-                        description=f"O usuário {interaction.user.mention} está interessado na conta **{self.account_id}**.\n\nNossa equipe irá ajudá-lo com o processo de compra.",
-                        color=COLORS["info"]
-                    )
+                # Envia mensagem no ticket sobre a conta com informações de pagamento
+                account_info_embed = discord.Embed(
+                    title="🛒 Interesse em Compra de Conta",
+                    description=f"O usuário {interaction.user.mention} está interessado na conta **{self.account_id}**.",
+                    color=COLORS["info"]
                 )
+                await channel.send(embed=account_info_embed)
+                
+                # Se o PIX está configurado e temos dados da conta
+                if pix_manager.is_configured() and self.account_data:
+                    try:
+                        # Extrai preço da conta
+                        price_str = self.account_data.get('price', '0')
+                        # Remove caracteres não numéricos exceto vírgula e ponto
+                        import re
+                        price_clean = re.sub(r'[^\d,.]', '', price_str)
+                        price_clean = price_clean.replace(',', '.')
+                        amount = float(price_clean)
+                        
+                        # Cria pagamento
+                        payment_data, message = pix_manager.create_payment(
+                            str(interaction.user.id),
+                            str(self.account_id),
+                            amount,
+                            self.account_data.get('title', 'Conta')
+                        )
+                        
+                        if payment_data:
+                            # Envia instruções de pagamento PIX
+                            pix_embed = discord.Embed(
+                                title="💳 Pagamento via PIX",
+                                description="Siga as instruções abaixo para realizar o pagamento:",
+                                color=0x00ff00,
+                                timestamp=discord.utils.utcnow()
+                            )
+                            pix_embed.add_field(
+                                name="💰 Valor",
+                                value=f"**R$ {amount:.2f}**",
+                                inline=True
+                            )
+                            pix_embed.add_field(
+                                name="🆔 ID do Pagamento",
+                                value=f"`{payment_data['payment_id']}`",
+                                inline=True
+                            )
+                            pix_embed.add_field(
+                                name="📱 Chave PIX (Copia e Cola)",
+                                value=f"```{payment_data['pix_key']}```",
+                                inline=False
+                            )
+                            pix_embed.add_field(
+                                name="📋 Como pagar",
+                                value="1️⃣ Copie a chave PIX acima\n2️⃣ Abra seu app bancário\n3️⃣ Vá em PIX → Pagar\n4️⃣ Cole a chave\n5️⃣ Confira o valor e pague\n6️⃣ Clique em **'✅ Já Paguei'** abaixo",
+                                inline=False
+                            )
+                            pix_embed.set_footer(text="⚠️ Após o pagamento, a equipe verificará e liberará sua conta")
+                            
+                            # View com botões de pagamento
+                            pix_view = PixPaymentView(
+                                payment_data['payment_id'],
+                                payment_data['pix_key'],
+                                amount
+                            )
+                            
+                            await channel.send(embed=pix_embed, view=pix_view)
+                            logger.info(f"💳 Pagamento PIX criado: {payment_data['payment_id']} - R$ {amount:.2f}")
+                        else:
+                            await channel.send(f"⚠️ Não foi possível gerar o pagamento PIX: {message}")
+                    
+                    except Exception as e:
+                        logger.error(f"Erro ao criar pagamento PIX: {e}")
+                        await channel.send(
+                            embed=discord.Embed(
+                                title="⚠️ Aviso",
+                                description="Não foi possível gerar o pagamento automático. A equipe entrará em contato para passar as informações de pagamento.",
+                                color=COLORS["warning"]
+                            )
+                        )
+                else:
+                    # PIX não configurado - mensagem padrão
+                    await channel.send(
+                        embed=discord.Embed(
+                            title="💬 Aguarde o Atendimento",
+                            description="Nossa equipe entrará em contato em breve com as informações de pagamento.",
+                            color=COLORS["info"]
+                        )
+                    )
             else:
                 await interaction.response.send_message(
                     embed=discord.Embed(
@@ -1415,6 +1640,155 @@ async def ajuda_backup(ctx):
     await ctx.send(embed=embed)
 
 
+# ==================== COMANDOS DE PIX ====================
+
+@bot.command(name="config_pix")
+@commands.has_permissions(administrator=True)
+async def config_pix(ctx, pix_key: str = None, *, pix_name: str = None):
+    """Configura chave PIX para pagamentos"""
+    
+    if not pix_key or not pix_name:
+        embed = discord.Embed(
+            title="⚙️ Configurar PIX",
+            description=f"Configure sua chave PIX para pagamentos automáticos.\n\n**Uso:**\n`{BOT_PREFIX}config_pix <chave_pix> <nome_beneficiario>`\n\n**Exemplo:**\n`{BOT_PREFIX}config_pix 12345678900 Joao Silva`\n`{BOT_PREFIX}config_pix email@exemplo.com Maria Santos`",
+            color=COLORS["info"]
+        )
+        
+        if pix_manager.is_configured():
+            config = pix_manager.config
+            key_masked = config['pix_key'][:4] + '****' + config['pix_key'][-4:] if len(config['pix_key']) > 8 else '****'
+            embed.add_field(
+                name="✅ Status Atual",
+                value=f"**Configurado**\nChave: `{key_masked}`\nNome: {config['pix_name']}",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="⚠️ Status Atual",
+                value="**Não configurado**\nConfigure o PIX para habilitar pagamentos automáticos.",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+        return
+    
+    # Configura o PIX
+    pix_manager.update_config(pix_key, pix_name)
+    
+    embed = discord.Embed(
+        title="✅ PIX Configurado!",
+        description="Sua chave PIX foi configurada com sucesso!",
+        color=COLORS["success"]
+    )
+    embed.add_field(name="🔑 Chave PIX", value=f"`{pix_key}`", inline=False)
+    embed.add_field(name="👤 Beneficiário", value=pix_name, inline=False)
+    embed.add_field(
+        name="📱 Próximo Passo",
+        value="Agora, quando alguém clicar em 'Comprar Conta', o sistema gerará automaticamente o pagamento PIX!",
+        inline=False
+    )
+    
+    await ctx.send(embed=embed)
+    logger.info(f"PIX configurado por {ctx.author} ({ctx.author.id})")
+
+
+@bot.command(name="confirmar_pix")
+@commands.has_permissions(manage_guild=True)
+async def confirmar_pix(ctx, payment_id: str):
+    """Confirma um pagamento PIX (apenas staff)"""
+    
+    success, message = pix_manager.confirm_payment(payment_id, str(ctx.author.id))
+    
+    if success:
+        payment = pix_manager.get_payment(payment_id)
+        
+        embed = discord.Embed(
+            title="✅ Pagamento Confirmado!",
+            description=f"O pagamento **{payment_id}** foi confirmado com sucesso!",
+            color=COLORS["success"],
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="💰 Valor", value=f"R$ {payment['amount']:.2f}", inline=True)
+        embed.add_field(name="👤 Cliente", value=f"<@{payment['user_id']}>", inline=True)
+        embed.add_field(name="🎮 Conta", value=payment['account_title'], inline=False)
+        embed.add_field(name="✅ Confirmado por", value=ctx.author.mention, inline=False)
+        
+        await ctx.send(embed=embed)
+        
+        # Tenta notificar o cliente
+        try:
+            user = await bot.fetch_user(int(payment['user_id']))
+            dm_embed = discord.Embed(
+                title="✅ Pagamento Confirmado!",
+                description=f"Seu pagamento de **R$ {payment['amount']:.2f}** foi confirmado!\n\n📦 **Conta:** {payment['account_title']}\n\nNossa equipe entrará em contato para finalizar a entrega.",
+                color=COLORS["success"]
+            )
+            await user.send(embed=dm_embed)
+        except:
+            pass
+        
+        logger.info(f"Pagamento {payment_id} confirmado por {ctx.author} ({ctx.author.id})")
+    else:
+        embed = discord.Embed(
+            title="❌ Erro",
+            description=message,
+            color=COLORS["error"]
+        )
+        await ctx.send(embed=embed)
+
+
+@bot.command(name="listar_pagamentos")
+@commands.has_permissions(manage_guild=True)
+async def listar_pagamentos(ctx, status: str = "pending"):
+    """Lista pagamentos (pending, confirmed, all)"""
+    
+    if status == "pending":
+        payments = pix_manager.get_pending_payments()
+        title = "⏳ Pagamentos Pendentes"
+    elif status == "confirmed":
+        payments = [p for p in pix_manager.get_all_payments() if p['status'] == 'confirmed']
+        title = "✅ Pagamentos Confirmados"
+    else:
+        payments = pix_manager.get_all_payments()
+        title = "💰 Todos os Pagamentos"
+    
+    if not payments:
+        embed = discord.Embed(
+            title=title,
+            description="Nenhum pagamento encontrado.",
+            color=COLORS["info"]
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title=title,
+        description=f"Total de {len(payments)} pagamento(s) encontrado(s):",
+        color=COLORS["info"]
+    )
+    
+    for i, payment in enumerate(payments[:10], 1):  # Limita a 10 por página
+        status_emoji = {"pending": "⏳", "confirmed": "✅", "cancelled": "❌"}
+        emoji = status_emoji.get(payment['status'], "❓")
+        
+        value = f"{emoji} **Status:** {payment['status']}\n"
+        value += f"💰 **Valor:** R$ {payment['amount']:.2f}\n"
+        value += f"👤 **Cliente:** <@{payment['user_id']}>\n"
+        value += f"🎮 **Conta:** {payment['account_title']}\n"
+        value += f"📅 **Data:** {payment['created_at'][:10]}"
+        
+        embed.add_field(
+            name=f"{i}. ID: {payment['payment_id']}",
+            value=value,
+            inline=False
+        )
+    
+    if len(payments) > 10:
+        embed.set_footer(text=f"Mostrando 10 de {len(payments)} pagamentos")
+    
+    await ctx.send(embed=embed)
+
+
 @bot.command(name="painel_mod")
 @commands.has_permissions(manage_guild=True)
 async def painel_mod(ctx):
@@ -1996,8 +2370,16 @@ def api_post_account():
                 
                 embed.set_footer(text=f"ID: {data['id']}")
                 
-                # View com botão de compra
-                view = BuyAccountView(data['id'])
+                # View com botão de compra - passa dados completos da conta
+                account_data = {
+                    'id': data['id'],
+                    'title': data['title'],
+                    'description': data['description'],
+                    'price': data['price'],
+                    'image_url': data.get('image_url', ''),
+                    'info': data.get('additional_info', '')
+                }
+                view = BuyAccountView(data['id'], account_data)
                 
                 await channel.send(embed=embed, view=view)
                 logger.info(f"🎮 Anúncio de conta postado: {data['title']}")

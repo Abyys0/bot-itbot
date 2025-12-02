@@ -20,6 +20,15 @@ Um bot de Discord completo para gerenciar tickets de suporte, vendas de contas, 
 ✅ Gerenciamento de disponibilidade (marcar como vendido)
 ✅ Remoção de contas do sistema
 
+### 💳 Sistema de Pagamento PIX (NOVO!)
+✅ Geração automática de chave PIX copia e cola
+✅ Pagamento integrado no ticket de compra
+✅ Botões interativos "Já Paguei" e "Cancelar"
+✅ Notificação automática para staff
+✅ Confirmação manual de pagamentos
+✅ Histórico completo de transações
+✅ DM automática para cliente após confirmação
+
 ### 📢 Sistema de Anúncios
 ✅ Enviar anúncios para canal específico via painel web
 ✅ Embeds profissionais e formatados
@@ -240,6 +249,12 @@ Bot-ibot/
   - ✅ Mantém todos os cargos
   - ✅ Cria estrutura profissional automática
   - 📖 **Guia completo:** [NOVA_LOJA_GUIDE.md](NOVA_LOJA_GUIDE.md)
+
+### Comandos de PIX (Apenas Administradores) 💳
+- `!config_pix <chave> <nome>` - Configura chave PIX para pagamentos
+- `!confirmar_pix <payment_id>` - Confirma um pagamento recebido
+- `!listar_pagamentos [status]` - Lista pagamentos (pending/confirmed/all)
+- 📖 **Guia completo:** [PIX_GUIDE.md](PIX_GUIDE.md)
 
 ## 🌐 Painel Web - Funcionalidades
 
