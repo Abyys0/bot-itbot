@@ -417,10 +417,70 @@ class AddMemberModal(discord.ui.Modal, title="Adicionar Membro"):
         """Quando o modal é enviado"""
         await self.view_instance.process_add_member(interaction, self.member_id.value)
 
+# ==================== MODALS PARA PIX ====================
+
+class ConfirmPaymentModal(discord.ui.Modal, title="Confirmar Pagamento"):
+    """Modal para staff confirmar pagamento"""
+    
+    payment_id_input = discord.ui.TextInput(
+        label="ID do Pagamento",
+        style=discord.TextStyle.short,
+        placeholder="Digite o ID do pagamento (ex: a1b2c3d4)",
+        required=True,
+        max_length=20
+    )
+    
+    def __init__(self):
+        super().__init__()
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Quando o modal é enviado"""
+        payment_id = self.payment_id_input.value.strip()
+        
+        # Confirma o pagamento
+        success, message = pix_manager.confirm_payment(payment_id, str(interaction.user.id))
+        
+        if success:
+            payment = pix_manager.get_payment(payment_id)
+            
+            embed = discord.Embed(
+                title="✅ Pagamento Confirmado!",
+                description=f"O pagamento **{payment_id}** foi confirmado com sucesso!",
+                color=COLORS["success"],
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="💰 Valor", value=f"R$ {payment['amount']:.2f}", inline=True)
+            embed.add_field(name="👤 Cliente", value=f"<@{payment['user_id']}>", inline=True)
+            embed.add_field(name="🎮 Conta", value=payment['account_title'], inline=False)
+            embed.add_field(name="✅ Confirmado por", value=interaction.user.mention, inline=False)
+            
+            await interaction.response.send_message(embed=embed)
+            
+            # Tenta notificar o cliente via DM
+            try:
+                user = await bot.fetch_user(int(payment['user_id']))
+                dm_embed = discord.Embed(
+                    title="✅ Pagamento Confirmado!",
+                    description=f"Seu pagamento de **R$ {payment['amount']:.2f}** foi confirmado!\n\n📦 **Conta:** {payment['account_title']}\n\nNossa equipe entrará em contato para finalizar a entrega.",
+                    color=COLORS["success"]
+                )
+                await user.send(embed=dm_embed)
+            except:
+                pass
+            
+            logger.info(f"Pagamento {payment_id} confirmado por {interaction.user} ({interaction.user.id})")
+        else:
+            embed = discord.Embed(
+                title="❌ Erro",
+                description=message,
+                color=COLORS["error"]
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
 # ==================== VIEWS (Botões) ====================
 
 class PixPaymentView(discord.ui.View):
-    """View para pagamento PIX"""
+    """View para pagamento PIX com botões para cliente e staff"""
     
     def __init__(self, payment_id: str, pix_key: str, amount: float):
         super().__init__(timeout=None)
@@ -428,9 +488,9 @@ class PixPaymentView(discord.ui.View):
         self.pix_key = pix_key
         self.amount = amount
     
-    @discord.ui.button(label="✅ Já Paguei", style=discord.ButtonStyle.green, emoji="💳")
+    @discord.ui.button(label="✅ Já Paguei", style=discord.ButtonStyle.green, emoji="💳", row=0)
     async def payment_done(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Botão para notificar staff que pagou"""
+        """Botão para cliente notificar staff que pagou"""
         guild = bot.get_guild(GUILD_ID)
         staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS if guild and guild.get_role(role_id)]
         staff_mentions = " ".join([role.mention for role in staff_roles])
@@ -459,7 +519,44 @@ class PixPaymentView(discord.ui.View):
             ephemeral=True
         )
     
-    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="✅ Confirmar Pagamento", style=discord.ButtonStyle.blurple, emoji="🔐", row=0)
+    async def confirm_payment_staff(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Botão para STAFF confirmar pagamento - Abre modal"""
+        guild = bot.get_guild(GUILD_ID)
+        if not guild:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description="Servidor não encontrado!",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+            return
+        
+        # Verifica se é staff
+        staff_roles = [guild.get_role(role_id) for role_id in STAFF_ROLE_IDS]
+        staff_roles = [role for role in staff_roles if role is not None]
+        user_role_ids = [role.id for role in interaction.user.roles]
+        is_staff = any(staff_role.id in user_role_ids for staff_role in staff_roles)
+        
+        if not is_staff:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Sem Permissão",
+                    description="Apenas staff pode confirmar pagamentos!",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+            return
+        
+        # Abre modal com ID pré-preenchido
+        modal = ConfirmPaymentModal()
+        modal.payment_id_input.default = self.payment_id
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.red, row=1)
     async def cancel_payment(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botão para cancelar pagamento"""
         success, message = pix_manager.cancel_payment(self.payment_id)
