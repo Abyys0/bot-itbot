@@ -13,6 +13,8 @@ import logging
 import asyncio
 import json
 from datetime import datetime
+import sys
+import time
 
 # Keep-alive e painel web integrado
 from flask import Flask, jsonify, request, send_from_directory
@@ -2401,6 +2403,34 @@ def reset_tickets():
         logger.error(f"❌ Erro ao resetar tickets: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/bot/restart', methods=['POST'])
+def restart_bot_endpoint():
+    """Reseta tickets e agenda reinício completo do bot"""
+    try:
+        data = request.get_json(silent=True) or {}
+        reset_flag = data.get('reset_tickets', True)
+        requested_by = data.get('requested_by', 'painel_web')
+        delay_value = data.get('delay', 4)
+        try:
+            delay = int(delay_value)
+        except (TypeError, ValueError):
+            delay = 4
+
+        if reset_flag:
+            ticket_manager.tickets = {}
+            ticket_manager.save_tickets()
+            logger.info(f"🧹 Tickets resetados antes do restart (solicitado por {requested_by})")
+
+        schedule_bot_restart(delay)
+
+        return jsonify({
+            'success': True,
+            'message': 'Bot será reiniciado em instantes. Painel ficará fora do ar temporariamente.'
+        }), 200
+    except Exception as e:
+        logger.error(f"❌ Erro ao agendar restart: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/ticket/create', methods=['POST'])
 def create_ticket_panel():
     """Cria um novo ticket via painel"""
@@ -2575,6 +2605,18 @@ def api_post_account():
             
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+def schedule_bot_restart(delay_seconds: int = 4):
+    """Agenda reinício do processo do bot"""
+    def _restart():
+        try:
+            logger.info(f"🔄 Reiniciando bot em {delay_seconds} segundos...")
+            time.sleep(max(delay_seconds, 1))
+            logger.info("🚀 Reiniciando processo do bot agora")
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        except Exception as exc:
+            logger.error(f"❌ Falha ao reiniciar bot: {exc}")
+    threading.Thread(target=_restart, daemon=True).start()
 
 def run_web_server():
     """Executa o servidor web em thread separada"""

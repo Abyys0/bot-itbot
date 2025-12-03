@@ -807,6 +807,13 @@
             <div id="tab-funcoes" class="tab-content">
                 <h2>⚙️ Funções do Painel</h2>
                 <div class="funcoes-grid"></div>
+
+                <div class="action-card" style="margin-top: 20px; background: #ffecec; border-left: 4px solid #e74c3c;">
+                    <h3 style="color: #e74c3c; margin-bottom: 10px;">🔁 Reiniciar Bot & Resetar Tickets</h3>
+                    <p style="color: #555; margin-bottom: 15px;">Use esta ação apenas em emergências. O bot será desligado e iniciado novamente, enquanto todos os tickets serão limpos do sistema.</p>
+                    <button class="btn-danger" onclick="confirmRestart()">🔄 Reiniciar Agora</button>
+                    <p style="font-size: 0.85em; color: #a00; margin-top: 10px;">⚠️ O painel ficará indisponível durante o reinício.</p>
+                </div>
             </div>
         </div>
 
@@ -1398,7 +1405,8 @@
                 { emoji: '📊', titulo: 'Ver Estatísticas', desc: 'Acompanhe métricas em tempo real' },
                 { emoji: '🎤', titulo: 'Criar Call', desc: 'Crie canais de voz para conversa' },
                 { emoji: '📢', titulo: 'Enviar Anúncios', desc: 'Envie mensagens para todos verem' },
-                { emoji: '🎮', titulo: 'Gerenciar Contas', desc: 'Adicione e gerencie contas para venda' }
+                { emoji: '🎮', titulo: 'Gerenciar Contas', desc: 'Adicione e gerencie contas para venda' },
+                { emoji: '🔁', titulo: 'Restart Seguro', desc: 'Reinicie o bot e limpe tickets pelo painel' }
             ];
 
             const container = document.getElementById('tab-funcoes').querySelector('.funcoes-grid');
@@ -1408,6 +1416,34 @@
                     <p>${f.desc}</p>
                 </div>
             `).join('');
+        }
+
+        function confirmRestart() {
+            const confirmation = confirm('Tem certeza que deseja reiniciar o bot e limpar todos os tickets? Esta ação derrubará o painel temporariamente.');
+            if (!confirmation) {
+                return;
+            }
+            restartBot();
+        }
+
+        async function restartBot() {
+            try {
+                const response = await fetch('/api/bot/restart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requested_by: 'web_panel', reset_tickets: true })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message || 'Bot reiniciando...', 'success');
+                } else {
+                    showToast(data.error || 'Erro ao reiniciar bot', 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao reiniciar bot:', error);
+                showToast('Erro ao reiniciar bot', 'error');
+            }
         }
 
         // ==================== ANÚNCIOS ====================
