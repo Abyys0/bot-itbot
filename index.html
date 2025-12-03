@@ -500,6 +500,35 @@
             margin-top: 15px;
         }
 
+        .logs-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+
+        .logs-controls select,
+        .logs-controls button {
+            width: auto;
+        }
+
+        .logs-viewer {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+        }
+
+        .logs-empty {
+            color: #888;
+        }
+
         footer {
             background: #f5f5f5;
             padding: 20px;
@@ -526,6 +555,7 @@
                 <button class="tab-btn" onclick="switchTab('anuncios')">📢 Anúncios</button>
                 <button class="tab-btn" onclick="switchTab('contas')">🎮 Contas</button>
                 <button class="tab-btn" onclick="switchTab('funcoes')">⚙️ Funções</button>
+                <button class="tab-btn" onclick="switchTab('logs')">🧾 Logs</button>
             </div>
 
             <!-- TAB: Overview -->
@@ -815,6 +845,30 @@
                     <p style="font-size: 0.85em; color: #a00; margin-top: 10px;">⚠️ O painel ficará indisponível durante o reinício.</p>
                 </div>
             </div>
+
+            <!-- TAB: Logs -->
+            <div id="tab-logs" class="tab-content">
+                <h2>🧾 Logs do Bot</h2>
+                <p style="margin-bottom: 15px; color: #555;">Visualize os últimos registros gerados pelo bot para identificar erros rapidamente.</p>
+                <div class="logs-controls">
+                    <label for="logsLimit">Quantidade:</label>
+                    <select id="logsLimit">
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                    <label for="logsLevel">Nível:</label>
+                    <select id="logsLevel">
+                        <option value="">Todos</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                    <button class="btn-secondary" onclick="loadLogs()">🔄 Atualizar</button>
+                </div>
+                <pre id="logsContainer" class="logs-viewer">Carregando logs...</pre>
+            </div>
         </div>
 
         <!-- Footer -->
@@ -840,6 +894,7 @@
         // Variáveis globais
         let currentAction = null;
         let currentTicketId = null;
+        let logsInterval = null;
 
         // Inicializa o painel
         window.addEventListener('load', function() {
@@ -847,6 +902,7 @@
             loadTickets();
             loadAccounts();
             populateFuncoes();
+            loadLogs();
         });
 
         // Atualiza a cada 10 segundos
@@ -872,7 +928,12 @@
                 loadAccounts();
             } else if (tabName === 'moderacao') {
                 loadModStats();
+            } else if (tabName === 'logs') {
+                loadLogs();
+                startLogsAutoRefresh();
+                return;
             }
+            stopLogsAutoRefresh();
         }
 
         function switchModTab(tabName) {
@@ -883,6 +944,21 @@
             // Adiciona ativa ao tab selecionado
             document.getElementById(`modtab-${tabName}-content`).style.display = 'block';
             document.getElementById(`modtab-${tabName}`).classList.add('active');
+        }
+
+        function startLogsAutoRefresh() {
+            if (logsInterval) {
+                return;
+            }
+            logsInterval = setInterval(loadLogs, 15000);
+        }
+
+        function stopLogsAutoRefresh() {
+            if (!logsInterval) {
+                return;
+            }
+            clearInterval(logsInterval);
+            logsInterval = null;
         }
 
         // ==================== FUNÇÕES DE MODERAÇÃO ====================
@@ -1443,6 +1519,44 @@
             } catch (error) {
                 console.error('Erro ao reiniciar bot:', error);
                 showToast('Erro ao reiniciar bot', 'error');
+            }
+        }
+
+        async function loadLogs() {
+            const container = document.getElementById('logsContainer');
+            if (!container) {
+                return;
+            }
+
+            const limit = document.getElementById('logsLimit') ? document.getElementById('logsLimit').value : 100;
+            const levelSelect = document.getElementById('logsLevel');
+            const level = levelSelect ? levelSelect.value : '';
+
+            const params = new URLSearchParams({ limit });
+            if (level) {
+                params.append('level', level);
+            }
+
+            try {
+                const response = await fetch(`/api/logs?${params.toString()}`);
+                const data = await response.json();
+
+                if (data.success && Array.isArray(data.logs)) {
+                    if (data.logs.length === 0) {
+                        container.textContent = 'Nenhum registro disponível para os filtros selecionados.';
+                        container.classList.add('logs-empty');
+                    } else {
+                        container.textContent = data.logs.map(log => log.message).join('\n');
+                        container.classList.remove('logs-empty');
+                    }
+                } else {
+                    container.textContent = (data.error || 'Erro ao carregar logs.');
+                    container.classList.add('logs-empty');
+                }
+            } catch (error) {
+                console.error('Erro ao carregar logs:', error);
+                container.textContent = 'Erro ao carregar logs.';
+                container.classList.add('logs-empty');
             }
         }
 

@@ -13,6 +13,7 @@ import logging
 import asyncio
 import json
 from datetime import datetime
+from collections import deque
 import sys
 import time
 
@@ -329,6 +330,28 @@ def send_announcement():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+LOG_BUFFER_LIMIT = 500
+log_buffer = deque(maxlen=LOG_BUFFER_LIMIT)
+
+class PanelLogHandler(logging.Handler):
+    """Armazena logs em memória para o painel"""
+
+    def __init__(self):
+        super().__init__()
+        self.setFormatter(logging.Formatter('%(asctime)s %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S'))
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            log_buffer.append({
+                "level": record.levelname,
+                "message": self.format(record)
+            })
+        except Exception:
+            pass
+
+panel_log_handler = PanelLogHandler()
+logging.getLogger().addHandler(panel_log_handler)
+
 # Intents necessários
 intents = discord.Intents.default()
 intents.message_content = True
@@ -444,7 +467,28 @@ class CloseTicketModal(discord.ui.Modal, title="Fechar Ticket"):
     
     async def on_submit(self, interaction: discord.Interaction):
         """Quando o modal é enviado"""
-        await self.view_instance.process_close(interaction, self.reason.value)
+        try:
+            await self.view_instance.process_close(interaction, self.reason.value)
+        except Exception as exc:
+            logger.error(f"❌ Erro ao fechar ticket via modal: {exc}", exc_info=True)
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title="❌ Erro ao fechar",
+                        description="Não foi possível fechar o ticket. Tente novamente ou verifique os logs.",
+                        color=COLORS["error"]
+                    ),
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="❌ Erro ao fechar",
+                        description="Não foi possível fechar o ticket. Tente novamente ou verifique os logs.",
+                        color=COLORS["error"]
+                    ),
+                    ephemeral=True
+                )
 
 
 class AddMemberModal(discord.ui.Modal, title="Adicionar Membro"):
@@ -1151,7 +1195,17 @@ class TicketPanelView(discord.ui.View):
         guild = self.bot.get_guild(GUILD_ID)
 
         # Fecha o ticket registrando motivo e staff responsável
-        ticket_manager.close_ticket(self.ticket_id, reason, str(interaction.user.id))
+        closed = ticket_manager.close_ticket(self.ticket_id, reason, str(interaction.user.id))
+        if not closed:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Ticket não encontrado",
+                    description="Não foi possível localizar este ticket no sistema. Atualize o painel e tente novamente.",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+            return
 
         # Obtém informações completas do ticket
         ticket_info = ticket_manager.get_ticket(self.ticket_id) or {}
@@ -2365,6 +2419,26 @@ def get_stats():
         }), 200
     except Exception as e:
         logger.error(f"❌ Erro ao buscar estatísticas: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/logs', methods=['GET'])
+def get_logs_api():
+    """Retorna logs recentes para o painel"""
+    try:
+        limit_param = request.args.get('limit', '200')
+        level_filter = request.args.get('level')
+        try:
+            limit = max(1, min(int(limit_param), LOG_BUFFER_LIMIT))
+        except ValueError:
+            limit = 200
+        logs_snapshot = list(log_buffer)
+        if level_filter:
+            level_filter = level_filter.upper()
+            logs_snapshot = [log for log in logs_snapshot if log['level'] == level_filter]
+        logs_payload = logs_snapshot[-limit:]
+        return jsonify({'success': True, 'logs': logs_payload}), 200
+    except Exception as e:
+        logger.error(f"❌ Erro ao carregar logs para painel: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/tickets', methods=['GET'])
