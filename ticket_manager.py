@@ -37,15 +37,6 @@ class TicketManager:
         self.save_tickets()
         return ticket_id
     
-    def close_ticket(self, ticket_id: str, staff_id: int):
-        """Fecha um ticket"""
-        if ticket_id in self.tickets:
-            self.tickets[ticket_id]["status"] = "closed"
-            self.tickets[ticket_id]["closed_by"] = staff_id
-            self.save_tickets()
-            return True
-        return False
-    
     def get_ticket(self, ticket_id: str):
         """Obtém informações de um ticket"""
         return self.tickets.get(ticket_id)
@@ -89,14 +80,16 @@ class TicketManager:
         self.save_tickets()
         return ticket_data
     
-    def close_ticket(self, ticket_id: str, reason: str = "Fechado"):
-        """Versão alternativa para fechar ticket com reason string"""
+    def close_ticket(self, ticket_id: str, reason: str = "Fechado", staff_id: str = None):
+        """Fecha um ticket com motivo e staff responsável"""
         ticket_key = f"ticket_{ticket_id}" if not ticket_id.startswith('ticket_') else ticket_id
         
         if ticket_key in self.tickets:
             self.tickets[ticket_key]["status"] = "closed"
             self.tickets[ticket_key]["closed_reason"] = reason
             self.tickets[ticket_key]["closed_at"] = str(discord.utils.utcnow())
+            if staff_id:
+                self.tickets[ticket_key]["closed_by"] = staff_id
             self.save_tickets()
             return True
         return False

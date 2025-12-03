@@ -827,11 +827,13 @@ class BuyAccountView(discord.ui.View):
             return
         
         try:
-            # Cria ticket automaticamente para compra
+            # Cria ticket automaticamente para compra com tipo 'purchase'
             channel, result_msg = await create_ticket_channel(
                 guild, 
                 interaction.user, 
-                f"Interesse em comprar conta - ID: {self.account_id}"
+                f"Compra de conta: {self.account_data.get('title', self.account_id) if self.account_data else self.account_id}",
+                ticket_type="purchase",
+                account_data=self.account_data
             )
             
             if channel:
@@ -839,122 +841,11 @@ class BuyAccountView(discord.ui.View):
                 await interaction.response.send_message(
                     embed=discord.Embed(
                         title="✅ Ticket de Compra Criado",
-                        description=f"Seu ticket para compra da conta foi criado com sucesso!\n\nAcesse: {channel.mention}\n\nNossa equipe entrará em contato em breve.",
+                        description=f"Seu ticket para compra da conta foi criado com sucesso!\n\nAcesse: {channel.mention}\n\nO pagamento via PIX foi gerado automaticamente no ticket.",
                         color=COLORS["success"]
                     ),
                     ephemeral=True
                 )
-                
-                # Envia mensagem no ticket sobre a conta com informações de pagamento
-                account_info_embed = discord.Embed(
-                    title="🛒 Interesse em Compra de Conta",
-                    description=f"O usuário {interaction.user.mention} está interessado na conta **{self.account_id}**.",
-                    color=COLORS["info"]
-                )
-                await channel.send(embed=account_info_embed)
-                
-                # Se o PIX está configurado e temos dados da conta
-                if pix_manager.is_configured() and self.account_data:
-                    try:
-                        # Extrai preço da conta
-                        import re
-                        price_raw = str(self.account_data.get('price', '0'))
-                        # Remove símbolos e preserva separadores decimais
-                        price_clean = re.sub(r'[^\d,.-]', '', price_raw)
-
-                        if ',' in price_clean and '.' in price_clean:
-                            # Assume '.' como separador de milhar e ',' como decimal
-                            price_clean = price_clean.replace('.', '').replace(',', '.')
-                        elif price_clean.count(',') > 1 and '.' not in price_clean:
-                            # Trata múltiplas vírgulas mantendo apenas a última como decimal
-                            parts = price_clean.split(',')
-                            integer_part = ''.join(parts[:-1]) or '0'
-                            decimal_part = parts[-1]
-                            price_clean = f"{integer_part}.{decimal_part}"
-                        else:
-                            price_clean = price_clean.replace(',', '.')
-
-                        try:
-                            amount = float(price_clean)
-                        except ValueError:
-                            logger.error(f"Formato de preço inválido: {price_raw}")
-                            await channel.send(
-                                embed=discord.Embed(
-                                    title="⚠️ Erro ao Ativar PIX",
-                                    description="Não foi possível interpretar o valor da conta. A equipe continuará o atendimento manualmente.",
-                                    color=COLORS["warning"]
-                                )
-                            )
-                            return
-                        
-                        # Cria pagamento
-                        payment_data, message = pix_manager.create_payment(
-                            str(interaction.user.id),
-                            str(self.account_id),
-                            amount,
-                            self.account_data.get('title', 'Conta')
-                        )
-                        
-                        if payment_data:
-                            # Envia instruções de pagamento PIX
-                            pix_embed = discord.Embed(
-                                title="💳 Pagamento via PIX",
-                                description="Siga as instruções abaixo para realizar o pagamento:",
-                                color=0x00ff00,
-                                timestamp=discord.utils.utcnow()
-                            )
-                            pix_embed.add_field(
-                                name="💰 Valor",
-                                value=f"**R$ {amount:.2f}**",
-                                inline=True
-                            )
-                            pix_embed.add_field(
-                                name="🆔 ID do Pagamento",
-                                value=f"`{payment_data['payment_id']}`",
-                                inline=True
-                            )
-                            pix_embed.add_field(
-                                name="📱 Chave PIX (Copia e Cola)",
-                                value=f"```{payment_data['pix_key']}```",
-                                inline=False
-                            )
-                            pix_embed.add_field(
-                                name="📋 Como pagar",
-                                value="1️⃣ Copie a chave PIX acima\n2️⃣ Abra seu app bancário\n3️⃣ Vá em PIX → Pagar\n4️⃣ Cole a chave\n5️⃣ Confira o valor e pague\n6️⃣ Clique em **'✅ Já Paguei'** abaixo",
-                                inline=False
-                            )
-                            pix_embed.set_footer(text="⚠️ Após o pagamento, a equipe verificará e liberará sua conta")
-                            
-                            # View com botões de pagamento
-                            pix_view = PixPaymentView(
-                                payment_data['payment_id'],
-                                payment_data['pix_key'],
-                                amount
-                            )
-                            
-                            await channel.send(embed=pix_embed, view=pix_view)
-                            logger.info(f"💳 Pagamento PIX criado: {payment_data['payment_id']} - R$ {amount:.2f}")
-                        else:
-                            await channel.send(f"⚠️ Não foi possível gerar o pagamento PIX: {message}")
-                    
-                    except Exception as e:
-                        logger.error(f"Erro ao criar pagamento PIX: {e}")
-                        await channel.send(
-                            embed=discord.Embed(
-                                title="⚠️ Aviso",
-                                description="Não foi possível gerar o pagamento automático. A equipe entrará em contato para passar as informações de pagamento.",
-                                color=COLORS["warning"]
-                            )
-                        )
-                else:
-                    # PIX não configurado - mensagem padrão
-                    await channel.send(
-                        embed=discord.Embed(
-                            title="💬 Aguarde o Atendimento",
-                            description="Nossa equipe entrará em contato em breve com as informações de pagamento.",
-                            color=COLORS["info"]
-                        )
-                    )
             else:
                 await interaction.response.send_message(
                     embed=discord.Embed(
@@ -1401,8 +1292,16 @@ class TicketPanelView(discord.ui.View):
 
 # ==================== FUNÇÕES AUXILIARES ====================
 
-async def create_ticket_channel(guild, user, reason="Ticket criado via painel"):
-    """Função independente para criar um canal de ticket"""
+async def create_ticket_channel(guild, user, reason="Ticket criado via painel", ticket_type="support", account_data=None):
+    """Função independente para criar um canal de ticket
+    
+    Args:
+        guild: Servidor Discord
+        user: Usuário que abriu o ticket
+        reason: Motivo do ticket
+        ticket_type: Tipo do ticket ('support' ou 'purchase')
+        account_data: Dados da conta (para tickets de compra)
+    """
     try:
         # Verifica se o usuário já tem um ticket aberto
         user_id = user.id
@@ -1410,10 +1309,19 @@ async def create_ticket_channel(guild, user, reason="Ticket criado via painel"):
             if ticket_info["user_id"] == str(user_id) and ticket_info["status"] == "open":
                 return None, f"Usuário {user.display_name} já possui um ticket aberto!"
         
-        # Cria o ticket no manager
+        # Cria o ticket no manager com tipo
         ticket_data = ticket_manager.create_ticket(str(user_id), reason)
         if not ticket_data:
             return None, "Erro ao criar ticket no sistema"
+        
+        # Adiciona tipo do ticket
+        ticket_number = ticket_data.get('number')
+        ticket_id = f"ticket_{ticket_number}"
+        ticket_manager.tickets[ticket_id]["ticket_type"] = ticket_type
+        if account_data:
+            ticket_manager.tickets[ticket_id]["account_id"] = account_data.get('id')
+            ticket_manager.tickets[ticket_id]["account_title"] = account_data.get('title')
+        ticket_manager.save_tickets()
             
         ticket_number = ticket_data.get('number')
         
@@ -1473,11 +1381,19 @@ async def create_ticket_channel(guild, user, reason="Ticket criado via painel"):
         ticket_manager.set_ticket_channel(ticket_id, channel.id)
         
         # Envia mensagem no canal do ticket
-        embed_ticket = discord.Embed(
-            title=f"🎫 Ticket #{ticket_number}",
-            description=f"Olá {user.mention}!\n\nObrigado por abrir um ticket. Nossa equipe de suporte entrará em contato em breve.",
-            color=COLORS["info"]
-        )
+        if ticket_type == "purchase":
+            embed_ticket = discord.Embed(
+                title=f"🛒 Ticket de Compra #{ticket_number}",
+                description=f"Olá {user.mention}!\n\n Você está interessado em comprar uma conta.\n\n**Conta:** {account_data.get('title') if account_data else 'N/A'}\n**Preço:** {account_data.get('price') if account_data else 'N/A'}",
+                color=0x00ff00
+            )
+        else:
+            embed_ticket = discord.Embed(
+                title=f"🎫 Ticket de Suporte #{ticket_number}",
+                description=f"Olá {user.mention}!\n\nObrigado por abrir um ticket. Nossa equipe de suporte entrará em contato em breve.",
+                color=COLORS["info"]
+            )
+        
         embed_ticket.add_field(name="Status", value="🟢 Aberto", inline=False)
         embed_ticket.add_field(name="Criado por", value=user.mention, inline=False)
         embed_ticket.add_field(name="Motivo", value=reason, inline=False)
@@ -1485,14 +1401,66 @@ async def create_ticket_channel(guild, user, reason="Ticket criado via painel"):
         
         await channel.send(embed=embed_ticket, view=TicketPanelView(bot, ticket_id, user.id))
         
+        # Se for ticket de compra, adiciona PIX automaticamente
+        if ticket_type == "purchase" and account_data and pix_manager.is_configured():
+            try:
+                # Extrai preço da conta
+                price_str = account_data.get('price', '0')
+                import re
+                price_clean = re.sub(r'[^\d,.]', '', price_str)
+                price_clean = price_clean.replace(',', '.')
+                amount = float(price_clean)
+                
+                # Cria pagamento
+                payment_data, message = pix_manager.create_payment(
+                    str(user.id),
+                    str(account_data.get('id')),
+                    amount,
+                    account_data.get('title', 'Conta')
+                )
+                
+                if payment_data:
+                    # Envia instruções de pagamento PIX
+                    pix_embed = discord.Embed(
+                        title="💳 Pagamento via PIX",
+                        description="Siga as instruções abaixo para realizar o pagamento:",
+                        color=0x00ff00,
+                        timestamp=discord.utils.utcnow()
+                    )
+                    pix_embed.add_field(name="💰 Valor", value=f"**R$ {amount:.2f}**", inline=True)
+                    pix_embed.add_field(name="🆔 ID do Pagamento", value=f"`{payment_data['payment_id']}`", inline=True)
+                    pix_embed.add_field(name="📱 Chave PIX (Copia e Cola)", value=f"```{payment_data['pix_key']}```", inline=False)
+                    pix_embed.add_field(
+                        name="📋 Como pagar",
+                        value="1️⃣ Copie a chave PIX acima\n2️⃣ Abra seu app bancário\n3️⃣ Vá em PIX → Pagar\n4️⃣ Cole a chave\n5️⃣ Confira o valor e pague\n6️⃣ Clique em **'✅ Já Paguei'** abaixo",
+                        inline=False
+                    )
+                    pix_embed.set_footer(text="⚠️ Após o pagamento, a equipe verificará e liberará sua conta")
+                    
+                    # View com botões de pagamento
+                    pix_view = PixPaymentView(payment_data['payment_id'], payment_data['pix_key'], amount)
+                    await channel.send(embed=pix_embed, view=pix_view)
+                    
+                    logger.info(f"💳 Pagamento PIX criado automaticamente no ticket #{ticket_number}: {payment_data['payment_id']} - R$ {amount:.2f}")
+            except Exception as e:
+                logger.error(f"Erro ao criar PIX no ticket: {e}")
+                await channel.send(
+                    embed=discord.Embed(
+                        title="⚠️ Aviso",
+                        description="Não foi possível gerar o pagamento automático. A equipe entrará em contato para passar as informações de pagamento.",
+                        color=COLORS["warning"]
+                    )
+                )
+        
         # Envia log
+        ticket_type_label = "🛒 Compra" if ticket_type == "purchase" else "🎫 Suporte"
         await send_log(
-            f"✅ Novo ticket criado",
-            f"**Ticket:** #{ticket_number}\n**Usuário:** {user.mention}\n**Canal:** {channel.mention}\n**Motivo:** {reason}",
+            f"✅ Novo ticket criado ({ticket_type_label})",
+            f"**Ticket:** #{ticket_number}\n**Tipo:** {ticket_type_label}\n**Usuário:** {user.mention}\n**Canal:** {channel.mention}\n**Motivo:** {reason}",
             COLORS["success"]
         )
         
-        logger.info(f"🎫 Ticket #{ticket_number} criado para {user.display_name} via painel - Canal: {channel.name}")
+        logger.info(f"{ticket_type_label} Ticket #{ticket_number} criado para {user.display_name} - Canal: {channel.name}")
         
         return channel, f"Ticket #{ticket_number} criado com sucesso!"
         
