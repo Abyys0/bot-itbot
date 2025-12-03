@@ -669,6 +669,139 @@ class PixPaymentView(discord.ui.View):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+class AddAccountModal(Modal):
+    """Modal para adicionar nova conta"""
+    
+    def __init__(self):
+        super().__init__(title="🎮 Adicionar Nova Conta Roblox")
+        
+        self.title_input = TextInput(
+            label="Título da Conta",
+            placeholder="Ex: ak47million",
+            required=True,
+            max_length=100
+        )
+        self.add_item(self.title_input)
+        
+        self.description_input = TextInput(
+            label="Descrição (itens da conta)",
+            placeholder="LOL Day Cap, Winter Games Hooded Scarf, etc...",
+            style=discord.TextStyle.paragraph,
+            required=True,
+            max_length=1000
+        )
+        self.add_item(self.description_input)
+        
+        self.price_input = TextInput(
+            label="Preço",
+            placeholder="Ex: R$ 30,00",
+            required=True,
+            max_length=20
+        )
+        self.add_item(self.price_input)
+        
+        self.image_input = TextInput(
+            label="URL da Imagem (opcional)",
+            placeholder="https://exemplo.com/imagem.png",
+            required=False,
+            max_length=500
+        )
+        self.add_item(self.image_input)
+        
+        self.info_input = TextInput(
+            label="Informações Adicionais (opcional)",
+            placeholder="Conta rara, verificada, etc...",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=500
+        )
+        self.add_item(self.info_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Quando o modal é enviado"""
+        try:
+            # Carregar contas existentes
+            if os.path.exists('accounts.json'):
+                with open('accounts.json', 'r', encoding='utf-8') as f:
+                    accounts = json.load(f)
+            else:
+                accounts = []
+            
+            # Criar nova conta
+            new_account = {
+                'id': len(accounts) + 1,
+                'title': self.title_input.value,
+                'description': self.description_input.value,
+                'price': self.price_input.value,
+                'image_url': self.image_input.value or '',
+                'info': self.info_input.value or '',
+                'status': 'available',
+                'created_at': datetime.now().isoformat()
+            }
+            
+            accounts.append(new_account)
+            
+            # Salvar
+            with open('accounts.json', 'w', encoding='utf-8') as f:
+                json.dump(accounts, f, ensure_ascii=False, indent=2)
+            
+            # Postar no canal de contas
+            from config import load_channel_ids
+            config = load_channel_ids()
+            accounts_channel_id = config.get('accounts_channel_id', 0)
+            
+            if accounts_channel_id == 0:
+                await interaction.response.send_message(
+                    "❌ Canal de contas não configurado!",
+                    ephemeral=True
+                )
+                return
+            
+            channel = bot.get_channel(accounts_channel_id)
+            if not channel:
+                await interaction.response.send_message(
+                    "❌ Canal de contas não encontrado!",
+                    ephemeral=True
+                )
+                return
+            
+            # Criar embed
+            embed = discord.Embed(
+                title=f"🎮 {new_account['title']}",
+                description=new_account['description'],
+                color=0x00ff00
+            )
+            embed.add_field(name="💰 Preço", value=new_account['price'], inline=True)
+            embed.add_field(name="📊 Status", value="✅ Disponível", inline=True)
+            if new_account['info']:
+                embed.add_field(name="ℹ️ Informações", value=new_account['info'], inline=False)
+            if new_account['image_url']:
+                embed.set_thumbnail(url=new_account['image_url'])
+            embed.set_footer(text=f"ID: {new_account['id']} | Adicionado por {interaction.user.name}")
+            
+            # Criar botão de compra
+            view = BuyAccountView(str(new_account['id']), new_account)
+            await channel.send(embed=embed, view=view)
+            
+            # Confirmar para o usuário
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="✅ Conta Adicionada",
+                    description=f"A conta **{new_account['title']}** foi adicionada com sucesso!\n\nPostada em: {channel.mention}",
+                    color=COLORS["success"]
+                ),
+                ephemeral=True
+            )
+            
+            logger.info(f"🎮 Conta adicionada via Discord: {new_account['title']} por {interaction.user.name}")
+            
+        except Exception as e:
+            logger.error(f"Erro ao adicionar conta: {e}")
+            await interaction.response.send_message(
+                f"❌ Erro ao adicionar conta: {str(e)}",
+                ephemeral=True
+            )
+
 class BuyAccountView(discord.ui.View):
     """View com botão de compra de conta"""
     
@@ -2016,6 +2149,33 @@ async def listar_pagamentos(ctx, status: str = "pending"):
     
     await ctx.send(embed=embed)
 
+
+@bot.command(name="adicionar_conta")
+@commands.has_permissions(manage_guild=True)
+async def adicionar_conta(ctx):
+    """Abre modal para adicionar uma nova conta de Roblox"""
+    
+    # Criar modal
+    modal = AddAccountModal()
+    
+    # Enviar mensagem temporária com botão para abrir o modal
+    embed = discord.Embed(
+        title="🎮 Adicionar Nova Conta",
+        description="Clique no botão abaixo para abrir o formulário de adição de conta.",
+        color=COLORS["success"]
+    )
+    
+    view = discord.ui.View(timeout=300)
+    button = discord.ui.Button(label="📝 Abrir Formulário", style=discord.ButtonStyle.green)
+    
+    async def button_callback(interaction: discord.Interaction):
+        await interaction.response.send_modal(modal)
+    
+    button.callback = button_callback
+    view.add_item(button)
+    
+    await ctx.send(embed=embed, view=view)
+    await ctx.message.delete()
 
 @bot.command(name="painel_mod")
 @commands.has_permissions(manage_guild=True)
