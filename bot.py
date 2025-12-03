@@ -162,14 +162,17 @@ def delete_account(account_id):
 def get_pix_config():
     """Obtém configuração do PIX"""
     try:
-        config = pix_manager.config
-        # Oculta parte da chave PIX por segurança
-        if config.get('pix_key'):
-            key = config['pix_key']
-            if len(key) > 8:
-                config['pix_key_masked'] = key[:4] + '****' + key[-4:]
+        config = pix_manager.config.copy()
+        pix_key = config.pop('pix_key', None)
+
+        if pix_key:
+            if len(pix_key) > 8:
+                config['pix_key_masked'] = pix_key[:4] + '****' + pix_key[-4:]
             else:
                 config['pix_key_masked'] = '****'
+        else:
+            config['pix_key_masked'] = None
+
         return jsonify({'success': True, 'config': config})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -675,12 +678,35 @@ class BuyAccountView(discord.ui.View):
                 if pix_manager.is_configured() and self.account_data:
                     try:
                         # Extrai preço da conta
-                        price_str = self.account_data.get('price', '0')
-                        # Remove caracteres não numéricos exceto vírgula e ponto
                         import re
-                        price_clean = re.sub(r'[^\d,.]', '', price_str)
-                        price_clean = price_clean.replace(',', '.')
-                        amount = float(price_clean)
+                        price_raw = str(self.account_data.get('price', '0'))
+                        # Remove símbolos e preserva separadores decimais
+                        price_clean = re.sub(r'[^\d,.-]', '', price_raw)
+
+                        if ',' in price_clean and '.' in price_clean:
+                            # Assume '.' como separador de milhar e ',' como decimal
+                            price_clean = price_clean.replace('.', '').replace(',', '.')
+                        elif price_clean.count(',') > 1 and '.' not in price_clean:
+                            # Trata múltiplas vírgulas mantendo apenas a última como decimal
+                            parts = price_clean.split(',')
+                            integer_part = ''.join(parts[:-1]) or '0'
+                            decimal_part = parts[-1]
+                            price_clean = f"{integer_part}.{decimal_part}"
+                        else:
+                            price_clean = price_clean.replace(',', '.')
+
+                        try:
+                            amount = float(price_clean)
+                        except ValueError:
+                            logger.error(f"Formato de preço inválido: {price_raw}")
+                            await channel.send(
+                                embed=discord.Embed(
+                                    title="⚠️ Erro ao Ativar PIX",
+                                    description="Não foi possível interpretar o valor da conta. A equipe continuará o atendimento manualmente.",
+                                    color=COLORS["warning"]
+                                )
+                            )
+                            return
                         
                         # Cria pagamento
                         payment_data, message = pix_manager.create_payment(
@@ -1050,7 +1076,7 @@ class TicketPanelView(discord.ui.View):
             
             # Cria o canal de voz com as mesmas permissões
             ticket_info = ticket_manager.get_ticket(self.ticket_id)
-            ticket_number = ticket_info.get("ticket_number", "?")
+            ticket_number = ticket_info.get("number", "?") if ticket_info else "?"
             
             voice_channel = await guild.create_voice_channel(
                 name=f"🎤│ticket-{ticket_number}",
@@ -1121,15 +1147,20 @@ class TicketPanelView(discord.ui.View):
     async def process_close(self, interaction: discord.Interaction, reason: str):
         """Processa o fechamento do ticket após receber o motivo"""
         guild = self.bot.get_guild(GUILD_ID)
-        
-        # Fecha o ticket
-        ticket_manager.close_ticket(self.ticket_id, interaction.user.id)
-        
+
+        # Fecha o ticket registrando motivo e staff responsável
+        ticket_manager.close_ticket(self.ticket_id, reason, str(interaction.user.id))
+
         # Obtém informações completas do ticket
-        ticket_info = ticket_manager.get_ticket(self.ticket_id)
-        ticket_number = ticket_info.get("ticket_number", "?")
+        ticket_info = ticket_manager.get_ticket(self.ticket_id) or {}
+        ticket_number = ticket_info.get("number", "?")
         ticket_creator_id = ticket_info.get("user_id")
-        ticket_creator = guild.get_member(ticket_creator_id)
+        ticket_creator = None
+        if guild and ticket_creator_id:
+            try:
+                ticket_creator = guild.get_member(int(ticket_creator_id))
+            except (ValueError, TypeError):
+                ticket_creator = None
         created_at = ticket_info.get("created_at", "Desconhecido")
         
         # Atualiza a embed
@@ -2250,6 +2281,7 @@ def api_close_ticket(ticket_id):
     try:
         data = request.get_json()
         reason = data.get('reason', 'Fechado via painel web')
+        staff_id = str(data.get('staff_id', 'panel_web'))
         
         guild = bot_instance.get_guild(GUILD_ID)
         if not guild:
@@ -2277,7 +2309,7 @@ def api_close_ticket(ticket_id):
             await ticket_channel.send(embed=embed)
             
             # Fecha no gerenciador
-            ticket_manager.close_ticket(ticket_id, reason)
+            ticket_manager.close_ticket(ticket_id, reason, staff_id)
             logger.info(f"✅ Ticket #{ticket_id} fechado no gerenciador")
             
             # Deleta após 10 segundos
