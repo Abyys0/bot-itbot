@@ -736,14 +736,14 @@
             </div>
             <!-- Navegação de Abas -->
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
-                <button class="tab-btn" onclick="switchTab('tickets')">🎫 Tickets</button>
-                <button class="tab-btn" onclick="switchTab('criar')">➕ Criar Ticket</button>
-                <button class="tab-btn" onclick="switchTab('moderacao')">🛡️ Moderação</button>
-                <button class="tab-btn" onclick="switchTab('anuncios')">📢 Anúncios</button>
-                <button class="tab-btn" onclick="switchTab('contas')">🎮 Contas</button>
-                <button class="tab-btn" onclick="switchTab('funcoes')">⚙️ Funções</button>
-                <button class="tab-btn" onclick="switchTab('logs')">🧾 Logs</button>
+                <button class="tab-btn active" data-tab="overview" onclick="switchTab('overview', event)">📊 Overview</button>
+                <button class="tab-btn" data-tab="tickets" onclick="switchTab('tickets', event)">🎫 Tickets</button>
+                <button class="tab-btn" data-tab="criar" onclick="switchTab('criar', event)">➕ Criar Ticket</button>
+                <button class="tab-btn" data-tab="moderacao" onclick="switchTab('moderacao', event)">🛡️ Moderação</button>
+                <button class="tab-btn" data-tab="anuncios" onclick="switchTab('anuncios', event)">📢 Anúncios</button>
+                <button class="tab-btn" data-tab="contas" onclick="switchTab('contas', event)">🎮 Contas</button>
+                <button class="tab-btn" data-tab="funcoes" onclick="switchTab('funcoes', event)">⚙️ Funções</button>
+                <button class="tab-btn" data-tab="logs" onclick="switchTab('logs', event)">🧾 Logs</button>
             </div>
 
             <!-- TAB: Overview -->
@@ -1210,14 +1210,19 @@
         setInterval(loadAccounts, 15000);
 
         // ==================== NAVEGAÇÃO ====================
-        function switchTab(tabName) {
-            // Remove ativa de todos os tabs
+        function switchTab(tabName, evt = null) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
-            // Adiciona ativa ao tab selecionado
-            document.getElementById(`tab-${tabName}`).classList.add('active');
-            event.target.classList.add('active');
+            const tabElement = document.getElementById(`tab-${tabName}`);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+
+            const targetButton = evt?.currentTarget || evt?.target || document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+            if (targetButton) {
+                targetButton.classList.add('active');
+            }
 
             if (tabName === 'tickets') {
                 loadTickets();
@@ -1227,12 +1232,14 @@
                 loadAccounts();
             } else if (tabName === 'moderacao') {
                 loadModStats();
-            } else if (tabName === 'logs') {
+            }
+
+            if (tabName === 'logs') {
                 loadLogs();
                 startLogsAutoRefresh();
-                return;
+            } else {
+                stopLogsAutoRefresh();
             }
-            stopLogsAutoRefresh();
         }
 
         function switchModTab(tabName) {
@@ -1249,7 +1256,7 @@
             if (logsInterval) {
                 return;
             }
-            logsInterval = setInterval(loadLogs, 15000);
+            logsInterval = setInterval(loadLogs, 4000);
         }
 
         function stopLogsAutoRefresh() {
@@ -1847,6 +1854,7 @@
                     } else {
                         container.textContent = data.logs.map(log => log.message).join('\n');
                         container.classList.remove('logs-empty');
+                        container.scrollTop = container.scrollHeight;
                     }
                 } else {
                     container.textContent = (data.error || 'Erro ao carregar logs.');

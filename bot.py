@@ -31,6 +31,92 @@ bot_instance = None
 # Importar e registrar rotas de moderação
 from moderation_api import register_moderation_routes
 
+ACCOUNTS_FILE = 'accounts.json'
+
+
+def _read_accounts_file():
+    if not os.path.exists(ACCOUNTS_FILE):
+        return []
+
+    try:
+        with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return []
+
+    if isinstance(data, list):
+        if _ensure_account_defaults(data):
+            _write_accounts_file(data)
+        return data
+    return []
+
+
+def _write_accounts_file(accounts):
+    try:
+        with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(accounts, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _ensure_account_defaults(accounts):
+    changed = False
+    for account in accounts:
+        changed |= _normalize_account_entry(account)
+    return changed
+
+
+def _normalize_account_entry(account):
+    changed = False
+
+    if 'info' in account and 'additional_info' not in account:
+        account['additional_info'] = account['info']
+        changed = True
+    elif 'additional_info' in account and 'info' not in account:
+        account['info'] = account['additional_info']
+        changed = True
+
+    available = account.get('available')
+    if isinstance(available, str):
+        available = available.lower() in ('1', 'true', 'yes', 'sim', 'available', 'disponivel', 'disponível')
+        account['available'] = available
+        changed = True
+
+    if available is None:
+        status = str(account.get('status', '')).lower()
+        if status:
+            available = status in ('available', 'disponivel', 'disponível')
+        else:
+            available = True
+        account['available'] = available
+        changed = True
+
+    desired_status = 'available' if account.get('available') else 'unavailable'
+    if account.get('status') != desired_status:
+        account['status'] = desired_status
+        changed = True
+
+    return changed
+
+
+def _find_account(accounts, target_id):
+    target = str(target_id)
+    for account in accounts:
+        if str(account.get('id')) == target:
+            return account
+    return None
+
+
+def _generate_account_id(accounts):
+    numeric_values = []
+    for account in accounts:
+        match = re.search(r'(\d+)$', str(account.get('id', '')))
+        if match:
+            numeric_values.append(int(match.group(1)))
+    if numeric_values:
+        return max(numeric_values) + 1
+    return len(accounts) + 1
+
 # Função para obter instância do bot (necessária para as APIs)
     
     # -- Satoru security placeholder --
@@ -47,11 +133,7 @@ register_moderation_routes(app, get_bot_instance)
 def get_accounts():
     """Lista todas as contas"""
     try:
-        if os.path.exists('accounts.json'):
-            with open('accounts.json', 'r', encoding='utf-8') as f:
-                accounts = json.load(f)
-        else:
-            accounts = []
+        accounts = _read_accounts_file()
         return jsonify({'success': True, 'accounts': accounts})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -66,35 +148,29 @@ def add_account():
         description = data.get('description')
         price = data.get('price')
         image_url = data.get('image_url', '')
-        info = data.get('info', '')
+        info = data.get('info') or data.get('additional_info', '')
         
         if not title or not description or not price:
             return jsonify({'success': False, 'error': 'Campos obrigatórios faltando'})
         
-        # Carregar contas existentes
-        if os.path.exists('accounts.json'):
-            with open('accounts.json', 'r', encoding='utf-8') as f:
-                accounts = json.load(f)
-        else:
-            accounts = []
+        accounts = _read_accounts_file()
         
         # Criar nova conta
         new_account = {
-            'id': len(accounts) + 1,
+            'id': _generate_account_id(accounts),
             'title': title,
             'description': description,
             'price': price,
             'image_url': image_url,
             'info': info,
+            'additional_info': info,
             'status': 'available',
+            'available': True,
             'created_at': datetime.now().isoformat()
         }
         
         accounts.append(new_account)
-        
-        # Salvar
-        with open('accounts.json', 'w', encoding='utf-8') as f:
-            json.dump(accounts, f, ensure_ascii=False, indent=2)
+        _write_accounts_file(accounts)
         
         # Postar no Discord
         async def post_to_discord():
@@ -144,27 +220,95 @@ def add_account():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
+@app.route('/api/accounts/<account_id>', methods=['DELETE'])
 @require_api_token
 def delete_account(account_id):
     """Deleta uma conta"""
     try:
-        if os.path.exists('accounts.json'):
-            with open('accounts.json', 'r', encoding='utf-8') as f:
-                accounts = json.load(f)
-        else:
+        accounts = _read_accounts_file()
+        if not accounts:
             return jsonify({'success': False, 'error': 'Nenhuma conta encontrada'})
-        
-        # Filtrar conta
-        accounts = [a for a in accounts if a.get('id') != account_id]
-        
-        # Salvar
-        with open('accounts.json', 'w', encoding='utf-8') as f:
-            json.dump(accounts, f, ensure_ascii=False, indent=2)
-        
+
+        filtered = [a for a in accounts if str(a.get('id')) != str(account_id)]
+        if len(filtered) == len(accounts):
+            return jsonify({'success': False, 'error': 'Conta não encontrada'}), 404
+
+        _write_accounts_file(filtered)
         return jsonify({'success': True, 'message': 'Conta deletada'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+
+def _announce_account(account_data):
+    if not bot_instance:
+        return False, "Bot não está conectado"
+
+    async def _post():
+        try:
+            from config import load_channel_ids
+            config = load_channel_ids()
+            accounts_channel_id = config.get('accounts_channel_id', 0)
+
+            if accounts_channel_id == 0:
+                return False, "Canal de contas não configurado"
+
+            channel = bot_instance.get_channel(accounts_channel_id)
+            if not channel:
+                return False, "Canal de contas não encontrado"
+
+            embed = discord.Embed(
+                title=f"🎮 {account_data['title']}",
+                description=account_data['description'],
+                color=0x00ff00,
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="💰 Preço", value=account_data['price'], inline=True)
+            embed.add_field(name="📊 Status", value="✅ Disponível", inline=True)
+            info_value = account_data.get('info') or account_data.get('additional_info')
+            if info_value:
+                embed.add_field(name="ℹ️ Informações", value=info_value, inline=False)
+            if account_data.get('image_url'):
+                embed.set_thumbnail(url=account_data['image_url'])
+            embed.set_footer(text=f"ID: {account_data['id']}")
+
+            view = BuyAccountView(str(account_data['id']), account_data)
+            await channel.send(embed=embed, view=view)
+            return True, "Conta anunciada com sucesso"
+        except Exception as exc:
+            return False, str(exc)
+
+    try:
+        loop = bot_instance.loop
+        future = asyncio.run_coroutine_threadsafe(_post(), loop)
+        return future.result(timeout=10)
+    except Exception as exc:
+        return False, str(exc)
+
+
+@app.route('/api/account/<account_id>/toggle', methods=['POST'])
+@require_api_token
+def toggle_account(account_id):
+    """Alterna disponibilidade e anuncia quando virar disponível"""
+    try:
+        accounts = _read_accounts_file()
+        account = _find_account(accounts, account_id)
+        if not account:
+            return jsonify({'success': False, 'error': 'Conta não encontrada'}), 404
+
+        previous_state = bool(account.get('available', True))
+        account['available'] = not previous_state
+        account['status'] = 'available' if account['available'] else 'unavailable'
+
+        _write_accounts_file(accounts)
+
+        message = 'Conta marcada como indisponível'
+        if account['available'] and not previous_state:
+            success, announce_msg = _announce_account(account)
+            message = announce_msg if success else f"Conta disponível, mas houve erro ao anunciar: {announce_msg}"
+
+        return jsonify({'success': True, 'available': account['available'], 'message': message})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ==================== ROTAS DE PIX ====================
 
