@@ -583,6 +583,134 @@
             color: #666;
             font-size: 0.9em;
         }
+
+        .logs-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .logs-controls label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .logs-controls select {
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #d0d0d0;
+            background: #fff;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                margin: 0 15px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            }
+
+            .token-bar {
+                flex-wrap: wrap;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            header h1 {
+                font-size: 2rem;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .tab-btn {
+                flex: 1 1 calc(50% - 6px);
+                text-align: center;
+            }
+
+            .token-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .token-bar input {
+                width: 100%;
+            }
+
+            .token-bar .token-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            #ticketsContainer {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .logs-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .logs-controls select,
+            .logs-controls button {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 480px) {
+            header {
+                padding: 20px;
+            }
+
+            header h1 {
+                font-size: 1.6rem;
+            }
+
+            .tab-btn {
+                flex: 1 1 100%;
+                padding: 12px;
+                font-size: 0.95rem;
+            }
+
+            .token-bar {
+                padding: 12px;
+            }
+
+            .token-bar .token-actions {
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .token-bar button {
+                width: 100%;
+            }
+
+            .modal-content {
+                width: 92%;
+                margin: 15% auto;
+            }
+
+            .action-card {
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 <body>
