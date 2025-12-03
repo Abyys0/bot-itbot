@@ -49,6 +49,13 @@ Um bot de Discord completo para gerenciar tickets de suporte, vendas de contas, 
 ✅ Enviar anúncios
 ✅ Design responsivo e moderno
 
+### 🛡️ Proteção Satoru (NOVO)
+✅ Monitoramento manualmente ativado com `!satoru_ativar`
+✅ Comando `!satoru_desativar` para encerrar o modo de segurança
+✅ `!satoru_status` mostra a situação atual do monitoramento
+✅ Bloqueia rajadas de mensagens e surtos de novos membros automaticamente
+✅ Ativa lockdown temporário, aplicando timeout/kick apenas em contas suspeitas
+
 ## 🚀 Instalação
 
 ### 1. Pré-requisitos
@@ -73,6 +80,7 @@ TICKET_CHANNEL_ID=987654321
 TICKET_CATEGORY_ID=111222333
 LOG_CHANNEL_ID=444555666
 STAFF_ROLE_IDS=777888999,000111222
+PANEL_API_TOKEN=sua_chave_segura_super_secreta
 ```
 
 #### Como obter os IDs:
@@ -95,6 +103,21 @@ STAFF_ROLE_IDS=777888999,000111222
 4. **STAFF_ROLE_ID** (Cargo de Staff):
    - Clique direito no cargo → Copiar ID do Cargo
    - Pessoas com este cargo poderão fechar tickets
+
+5. **PANEL_API_TOKEN** (Token do Painel Web):
+   - Gere uma string longa e aleatória com pelo menos 32 caracteres
+   - Use apenas caracteres ASCII para facilitar o uso em variáveis de ambiente
+   - No Render (ou outro host), crie a mesma variável de ambiente para bloquear acessos não autorizados
+
+### 🔐 Autenticação do Painel Web
+
+Todas as rotas `/api/*` agora exigem o token definido em `PANEL_API_TOKEN`.
+
+1. Defina a variável no `.env` local e nas configurações do ambiente de produção.
+2. Reinicie o bot para que o valor seja carregado.
+3. Ao abrir o painel web, cole o token na barra "Token do painel" exibida no topo e clique em **Salvar**.
+4. Enquanto o token não for salvo (ou estiver incorreto) as requisições serão bloqueadas com `401 Unauthorized`.
+5. Você pode limpar o token salvo no navegador usando o botão **Limpar** caso precise trocar a credencial.
 
 ### 4. Permissões do Bot
 

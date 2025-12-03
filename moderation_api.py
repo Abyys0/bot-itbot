@@ -6,6 +6,7 @@ import discord
 import asyncio
 from datetime import datetime, timedelta
 import logging
+from api_auth import require_api_token
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ def register_moderation_routes(app, bot_instance_getter):
     """Registra todas as rotas de moderação no Flask app"""
     
     @app.route('/api/moderation/ban', methods=['POST'])
+    @require_api_token
     def api_ban():
         """API para banir usuário"""
         try:
@@ -58,6 +60,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/kick', methods=['POST'])
+    @require_api_token
     def api_kick():
         """API para expulsar usuário"""
         try:
@@ -101,6 +104,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/warn', methods=['POST'])
+    @require_api_token
     def api_warn():
         """API para avisar usuário"""
         try:
@@ -154,6 +158,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/timeout', methods=['POST'])
+    @require_api_token
     def api_timeout():
         """API para aplicar timeout"""
         try:
@@ -199,6 +204,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/clear', methods=['POST'])
+    @require_api_token
     def api_clear():
         """API para limpar mensagens"""
         try:
@@ -234,6 +240,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/userinfo', methods=['GET'])
+    @require_api_token
     def api_user_info():
         """API para obter informações do usuário"""
         try:
@@ -281,6 +288,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/serverinfo', methods=['GET'])
+    @require_api_token
     def api_server_info():
         """API para obter informações do servidor"""
         try:
@@ -321,6 +329,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/lock', methods=['POST'])
+    @require_api_token
     def api_lock_channel():
         """API para trancar/destrancar canal"""
         try:
@@ -360,6 +369,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/history', methods=['GET'])
+    @require_api_token
     def api_user_history():
         """API para obter histórico de punições"""
         try:
@@ -390,6 +400,7 @@ def register_moderation_routes(app, bot_instance_getter):
             return jsonify({'success': False, 'error': str(e)})
     
     @app.route('/api/moderation/stats', methods=['GET'])
+    @require_api_token
     def api_mod_stats():
         """API para estatísticas de moderação"""
         try:

@@ -40,6 +40,9 @@ WELCOME_CHANNEL_ID = _channel_config.get("welcome_channel_id", 0)
 STAFF_ROLE_IDS = [int(role_id.strip()) for role_id in os.getenv("STAFF_ROLE_IDS", "0").split(",") if role_id.strip()]  # Cargos de staff para fechar tickets
 GUILD_ID = int(os.getenv("GUILD_ID", "0"))  # ID do servidor
 
+# Token para autenticar o painel web
+PANEL_API_TOKEN = os.getenv("PANEL_API_TOKEN", "")
+
 # Prefixo do bot
 BOT_PREFIX = "!"
 

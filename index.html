@@ -48,6 +48,49 @@
             padding: 30px;
         }
 
+        .token-bar {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            background: #f9f9ff;
+            border: 1px solid #e0e0ff;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .token-bar label {
+            font-size: 0.85em;
+            color: #555;
+        }
+
+        .token-bar input {
+            min-width: 240px;
+            padding: 10px 12px;
+            border: 1px solid #d0d0ff;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+
+        .token-bar .token-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .token-warning {
+            display: none;
+            background: #fff4e5;
+            border: 1px solid #ffb347;
+            color: #8a4c00;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            margin-bottom: 25px;
+            align-items: center;
+            gap: 10px;
+        }
+
         .tabs {
             display: flex;
             gap: 10px;
@@ -408,6 +451,10 @@
             background: #e74c3c;
         }
 
+        .toast.warning {
+            background: #f39c12;
+        }
+
         @keyframes slideIn {
             from {
                 transform: translateX(400px);
@@ -546,6 +593,19 @@
         </header>
 
         <div class="content">
+            <div class="token-bar">
+                <div style="flex: 1; min-width: 240px;">
+                    <label for="apiTokenInput">Token do painel (Authorization)</label>
+                    <input type="password" id="apiTokenInput" placeholder="Cole o token configurado no servidor" />
+                </div>
+                <div class="token-actions">
+                    <button class="btn-primary" onclick="saveApiToken()">Salvar</button>
+                    <button class="btn-secondary" onclick="clearApiToken()">Limpar</button>
+                </div>
+            </div>
+            <div id="tokenWarning" class="token-warning">
+                ⚠️ Configure o token do painel para acessar os endpoints protegidos.
+            </div>
             <!-- Navegação de Abas -->
             <div class="tabs">
                 <button class="tab-btn active" onclick="switchTab('overview')">📊 Overview</button>
@@ -891,13 +951,124 @@
     </div>
 
     <script>
+        const API_TOKEN_STORAGE_KEY = 'panel_api_token';
         // Variáveis globais
         let currentAction = null;
         let currentTicketId = null;
         let logsInterval = null;
+        let lastAuthWarning = 0;
+
+        function normalizeHeaders(headers) {
+            if (!headers) {
+                return {};
+            }
+            if (headers instanceof Headers) {
+                const normalized = {};
+                headers.forEach((value, key) => {
+                    normalized[key] = value;
+                });
+                return normalized;
+            }
+            return { ...headers };
+        }
+
+        function getStoredToken() {
+            try {
+                return localStorage.getItem(API_TOKEN_STORAGE_KEY) || '';
+            } catch (error) {
+                console.error('Erro ao ler token salvo:', error);
+                return '';
+            }
+        }
+
+        function setStoredToken(value) {
+            try {
+                if (value) {
+                    localStorage.setItem(API_TOKEN_STORAGE_KEY, value);
+                } else {
+                    localStorage.removeItem(API_TOKEN_STORAGE_KEY);
+                }
+            } catch (error) {
+                console.error('Erro ao salvar token:', error);
+            }
+        }
+
+        function getAuthHeaders(existingHeaders = {}) {
+            const headers = { ...existingHeaders };
+            const token = getStoredToken();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            return headers;
+        }
+
+        function updateTokenWarning() {
+            const warning = document.getElementById('tokenWarning');
+            if (warning) {
+                warning.style.display = getStoredToken() ? 'none' : 'flex';
+            }
+        }
+
+        function syncTokenInput() {
+            const input = document.getElementById('apiTokenInput');
+            if (input) {
+                input.value = getStoredToken();
+            }
+        }
+
+        function handleAuthError() {
+            updateTokenWarning();
+            const now = Date.now();
+            if (now - lastAuthWarning > 4000) {
+                lastAuthWarning = now;
+                if (typeof showToast === 'function') {
+                    showToast('Token do painel inválido ou ausente.', 'error');
+                }
+            }
+        }
+
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = function(url, options = {}) {
+            const opts = { ...options };
+            opts.headers = getAuthHeaders(normalizeHeaders(opts.headers));
+            return nativeFetch(url, opts).then(response => {
+                if (response.status === 401) {
+                    handleAuthError();
+                }
+                return response;
+            });
+        };
+
+        function saveApiToken() {
+            const input = document.getElementById('apiTokenInput');
+            if (!input) {
+                return;
+            }
+            const value = input.value.trim();
+            if (!value) {
+                showToast('Informe um token válido.', 'error');
+                return;
+            }
+            setStoredToken(value);
+            updateTokenWarning();
+            showToast('Token salvo com sucesso!', 'success');
+            loadStats();
+            loadTickets();
+            loadAccounts();
+            loadLogs();
+        }
+
+        function clearApiToken() {
+            setStoredToken('');
+            syncTokenInput();
+            updateTokenWarning();
+            showToast('Token removido. Configure um novo antes de continuar.', 'warning');
+        }
 
         // Inicializa o painel
         window.addEventListener('load', function() {
+            syncTokenInput();
+            updateTokenWarning();
             loadStats();
             loadTickets();
             loadAccounts();

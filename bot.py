@@ -9,11 +9,12 @@ from ticket_manager import TicketManager
 from backup_manager import BackupManager
 from loja_builder import LojaBuilder
 from pix_manager import PixManager
+from api_auth import require_api_token
 import logging
 import asyncio
 import json
-from datetime import datetime
-from collections import deque
+from datetime import datetime, timedelta
+from collections import deque, defaultdict
 import sys
 import time
 
@@ -30,6 +31,8 @@ bot_instance = None
 from moderation_api import register_moderation_routes
 
 # Função para obter instância do bot (necessária para as APIs)
+    
+    # -- Satoru security placeholder --
 def get_bot_instance():
     return bot_instance
 
@@ -39,6 +42,7 @@ register_moderation_routes(app, get_bot_instance)
 # ==================== ROTAS DE CONTAS ====================
 
 @app.route('/api/accounts', methods=['GET'])
+@require_api_token
 def get_accounts():
     """Lista todas as contas"""
     try:
@@ -52,6 +56,7 @@ def get_accounts():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/accounts/add', methods=['POST'])
+@require_api_token
 def add_account():
     """Adiciona uma nova conta"""
     try:
@@ -139,6 +144,7 @@ def add_account():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/accounts/<int:account_id>', methods=['DELETE'])
+@require_api_token
 def delete_account(account_id):
     """Deleta uma conta"""
     try:
@@ -162,6 +168,7 @@ def delete_account(account_id):
 # ==================== ROTAS DE PIX ====================
 
 @app.route('/api/pix/config', methods=['GET'])
+@require_api_token
 def get_pix_config():
     """Obtém configuração do PIX"""
     try:
@@ -181,6 +188,7 @@ def get_pix_config():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/pix/config', methods=['POST'])
+@require_api_token
 def update_pix_config():
     """Atualiza configuração do PIX"""
     try:
@@ -198,6 +206,7 @@ def update_pix_config():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/pix/payments', methods=['GET'])
+@require_api_token
 def get_all_payments():
     """Lista todos os pagamentos"""
     try:
@@ -207,6 +216,7 @@ def get_all_payments():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/pix/payments/pending', methods=['GET'])
+@require_api_token
 def get_pending_payments():
     """Lista pagamentos pendentes"""
     try:
@@ -216,6 +226,7 @@ def get_pending_payments():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/pix/payment/<payment_id>/confirm', methods=['POST'])
+@require_api_token
 def confirm_payment(payment_id):
     """Confirma um pagamento"""
     try:
@@ -232,6 +243,7 @@ def confirm_payment(payment_id):
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/pix/payment/<payment_id>/cancel', methods=['POST'])
+@require_api_token
 def cancel_payment(payment_id):
     """Cancela um pagamento"""
     try:
@@ -258,6 +270,7 @@ def health():
 
 # API para enviar anúncios
 @app.route('/api/announcement/send', methods=['POST'])
+@require_api_token
 def send_announcement():
     """Envia um anúncio no canal configurado"""
     try:
@@ -363,6 +376,209 @@ ticket_manager = TicketManager(bot)
 backup_manager = BackupManager()
 loja_builder = LojaBuilder(bot)
 pix_manager = PixManager()
+
+# ==================== SATORU SECURITY ====================
+
+class SatoruSecurity:
+    """Camada de proteção inteligente contra raids e spam."""
+
+    JOIN_WINDOW_SECONDS = 25
+    JOIN_THRESHOLD = 6
+    MESSAGE_WINDOW_SECONDS = 4
+    MESSAGE_THRESHOLD = 7
+    TIMEOUT_MINUTES = 15
+    LOCKDOWN_DURATION_MINUTES = 8
+
+    def __init__(self, bot_instance: commands.Bot):
+        self.bot = bot_instance
+        self.active = False
+        self.lockdown_active = False
+        self.lockdown_until = None
+        self.join_events = deque()
+        self.message_events = defaultdict(deque)
+
+    async def activate(self, ctx):
+        if self.active:
+            await ctx.send(embed=self._build_status_embed(ctx.guild, "🟢 Satoru já está ativo."))
+            return
+
+        self.active = True
+        self.join_events.clear()
+        self.message_events.clear()
+        self.lockdown_active = False
+        self.lockdown_until = None
+
+        await ctx.send(embed=self._build_status_embed(ctx.guild, "🛡️ Proteção Satoru ativada com sucesso!"))
+        await self._log_event(
+            ctx.guild,
+            "🛡️ Satoru ativado",
+            f"Ativado por {ctx.author.mention}. O servidor será monitorado contra raids.",
+            COLORS["info"]
+        )
+
+    async def deactivate(self, ctx):
+        if not self.active:
+            await ctx.send(embed=self._build_status_embed(ctx.guild, "Satoru já está desativado."))
+            return
+
+        self.active = False
+        self.lockdown_active = False
+        self.lockdown_until = None
+        self.join_events.clear()
+        self.message_events.clear()
+
+        await ctx.send(embed=self._build_status_embed(ctx.guild, "🔕 Proteção Satoru desativada."))
+        await self._log_event(
+            ctx.guild,
+            "🔕 Satoru desativado",
+            f"Desativado por {ctx.author.mention}. Monitoramento extra pausado.",
+            COLORS["warning"]
+        )
+
+    def _trim_history(self, history: deque, window_seconds: int):
+        now = datetime.utcnow()
+        while history and (now - history[0]).total_seconds() > window_seconds:
+            history.popleft()
+
+    async def handle_member_join(self, member: discord.Member) -> bool:
+        if not self.active or member.bot or member.guild is None:
+            return False
+
+        self._refresh_lockdown(member.guild)
+
+        if self.lockdown_active:
+            await self._apply_emergency_action(member, "Servidor em lockdown")
+            return True
+
+        now = datetime.utcnow()
+        self.join_events.append(now)
+        self._trim_history(self.join_events, self.JOIN_WINDOW_SECONDS)
+
+        if len(self.join_events) >= self.JOIN_THRESHOLD:
+            await self._trigger_lockdown(member.guild, "Entrada massiva detectada")
+            await self._apply_emergency_action(member, "Raid detectada (entradas em massa)")
+            return True
+
+        return False
+
+    async def handle_message(self, message: discord.Message):
+        if (
+            not self.active
+            or message.guild is None
+            or message.author.bot
+            or not isinstance(message.author, discord.Member)
+        ):
+            return
+
+        if message.author.guild_permissions.manage_messages:
+            return
+
+        now = datetime.utcnow()
+        history = self.message_events[message.author.id]
+        history.append(now)
+        self._trim_history(history, self.MESSAGE_WINDOW_SECONDS)
+
+        if len(history) >= self.MESSAGE_THRESHOLD:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+            await self._apply_emergency_action(message.author, "Envio massivo de mensagens")
+            self.message_events.pop(message.author.id, None)
+
+    def _refresh_lockdown(self, guild: discord.Guild):
+        if not self.lockdown_active:
+            return
+
+        if self.lockdown_until and datetime.utcnow() > self.lockdown_until:
+            self.lockdown_active = False
+            self.lockdown_until = None
+            asyncio.create_task(
+                self._log_event(
+                    guild,
+                    "✅ Lockdown encerrado",
+                    "O bloqueio automático foi encerrado por tempo expirado.",
+                    COLORS["success"]
+                )
+            )
+
+    async def _apply_emergency_action(self, member: discord.Member, reason: str):
+        action = None
+        try:
+            until = discord.utils.utcnow() + timedelta(minutes=self.TIMEOUT_MINUTES)
+            await member.timeout(until, reason=f"Satoru: {reason}")
+            action = f"timeout de {self.TIMEOUT_MINUTES} minutos"
+        except (discord.Forbidden, discord.HTTPException):
+            try:
+                await member.kick(reason=f"Satoru: {reason}")
+                action = "kick automático"
+            except (discord.Forbidden, discord.HTTPException):
+                action = None
+
+        if action:
+            await self._log_event(
+                member.guild,
+                "⚠️ Satoru aplicou sanção",
+                f"{member.mention} recebeu {action}. Motivo: {reason}.",
+                COLORS["warning"]
+            )
+
+    async def _trigger_lockdown(self, guild: discord.Guild, reason: str):
+        if self.lockdown_active:
+            return
+
+        self.lockdown_active = True
+        self.lockdown_until = datetime.utcnow() + timedelta(minutes=self.LOCKDOWN_DURATION_MINUTES)
+        await self._log_event(
+            guild,
+            "🚨 Lockdown Satoru",
+            f"{reason}. Novos membros serão temporariamente silenciados pelos próximos {self.LOCKDOWN_DURATION_MINUTES} minutos.",
+            COLORS["error"]
+        )
+
+    async def _log_event(self, guild: discord.Guild, title: str, description: str, color: int):
+        if not guild:
+            return
+
+        log_channel = guild.get_channel(LOG_CHANNEL_ID)
+        if not log_channel:
+            return
+
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=discord.utils.utcnow()
+        )
+        try:
+            await log_channel.send(embed=embed)
+        except Exception:
+            pass
+
+    def _build_status_embed(self, guild: discord.Guild, message: str) -> discord.Embed:
+        embed = discord.Embed(
+            title="🛡️ Proteção Satoru",
+            description=message,
+            color=COLORS["info"] if self.active else COLORS["warning"],
+            timestamp=discord.utils.utcnow()
+        )
+        embed.add_field(name="Estado", value="Ativo" if self.active else "Desativado", inline=True)
+        embed.add_field(name="Lockdown", value="Ativo" if self.lockdown_active else "Desligado", inline=True)
+        if self.lockdown_active and self.lockdown_until:
+            embed.add_field(
+                name="Termina em",
+                value=f"<t:{int(self.lockdown_until.timestamp())}:R>",
+                inline=False
+            )
+        embed.set_footer(text="Satoru mantém o servidor protegido contra raids")
+        return embed
+
+    def status_embed(self, guild: discord.Guild, message: str = "Status atual da proteção") -> discord.Embed:
+        return self._build_status_embed(guild, message)
+
+
+satoru_security = SatoruSecurity(bot)
 
 # ==================== AUTO-DETECÇÃO DE CANAIS ====================
 
@@ -1600,6 +1816,9 @@ async def on_ready():
 async def on_member_join(member: discord.Member):
     """Evento disparado quando um novo membro entra no servidor"""
     try:
+        if await satoru_security.handle_member_join(member):
+            return
+        
         # Buscar canal de boas-vindas
         from config import WELCOME_CHANNEL_ID
         
@@ -1650,7 +1869,41 @@ async def on_member_join(member: discord.Member):
         logger.error(f"Erro ao enviar boas-vindas: {e}")
 
 
+@bot.event
+async def on_message(message: discord.Message):
+    """Intercepta mensagens para aplicar os filtros do Satoru sem bloquear comandos."""
+    if not message.guild:
+        await bot.process_commands(message)
+        return
+
+    if satoru_security.active:
+        await satoru_security.handle_message(message)
+
+    await bot.process_commands(message)
+
+
 # ==================== COMANDOS ====================
+
+@bot.command(name="satoru_ativar")
+@commands.has_permissions(administrator=True)
+async def satoru_ativar(ctx):
+    """Ativa o modo de proteção Satoru."""
+    await satoru_security.activate(ctx)
+
+
+@bot.command(name="satoru_desativar")
+@commands.has_permissions(administrator=True)
+async def satoru_desativar(ctx):
+    """Desliga temporariamente o Satoru."""
+    await satoru_security.deactivate(ctx)
+
+
+@bot.command(name="satoru_status")
+@commands.has_permissions(manage_guild=True)
+async def satoru_status(ctx):
+    """Mostra o status atual da proteção."""
+    embed = satoru_security.status_embed(ctx.guild)
+    await ctx.send(embed=embed)
 
 @bot.command(name="ticketinfo")
 async def ticket_info(ctx):
@@ -2377,6 +2630,7 @@ def dashboard():
 # ==================== API ENDPOINTS PARA PAINEL ====================
 
 @app.route('/api/bot/notify/<ticket_id>', methods=['POST'])
+@require_api_token
 def api_notify_staff(ticket_id):
     """API: Notifica staff sobre um ticket"""
     try:
@@ -2415,6 +2669,7 @@ def api_notify_staff(ticket_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/add-member/<ticket_id>', methods=['POST'])
+@require_api_token
 def api_add_member(ticket_id):
     """API: Adiciona membro a um ticket"""
     try:
@@ -2460,6 +2715,7 @@ def api_add_member(ticket_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/close/<ticket_id>', methods=['POST'])
+@require_api_token
 def api_close_ticket(ticket_id):
     """API: Fecha um ticket"""
     try:
@@ -2508,6 +2764,7 @@ def api_close_ticket(ticket_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/tickets', methods=['GET'])
+@require_api_token
 def api_get_tickets():
     """API: Lista todos os tickets"""
     try:
@@ -2519,6 +2776,7 @@ def api_get_tickets():
 # ==================== ENDPOINTS PARA PAINEL WEB ====================
 
 @app.route('/api/stats', methods=['GET'])
+@require_api_token
 def get_stats():
     """Retorna estatísticas dos tickets"""
     try:
@@ -2550,6 +2808,7 @@ def get_stats():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/logs', methods=['GET'])
+@require_api_token
 def get_logs_api():
     """Retorna logs recentes para o painel"""
     try:
@@ -2570,6 +2829,7 @@ def get_logs_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/tickets', methods=['GET'])
+@require_api_token
 def get_tickets():
     """Retorna todos os tickets"""
     try:
@@ -2579,21 +2839,25 @@ def get_tickets():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ticket/<ticket_id>/notify', methods=['POST'])
+@require_api_token
 def notify_staff_panel(ticket_id):
     """Notifica staff via painel"""
     return api_notify_staff(ticket_id)
 
 @app.route('/api/ticket/<ticket_id>/add-member', methods=['POST']) 
+@require_api_token
 def add_member_panel(ticket_id):
     """Adiciona membro via painel"""
     return api_add_member(ticket_id)
 
 @app.route('/api/ticket/<ticket_id>/close', methods=['POST'])
+@require_api_token
 def close_ticket_panel(ticket_id):
     """Fecha ticket via painel"""
     return api_close_ticket(ticket_id)
 
 @app.route('/api/tickets/reset', methods=['POST'])
+@require_api_token
 def reset_tickets():
     """Reset todos os tickets (apenas para debug)"""
     try:
@@ -2606,6 +2870,7 @@ def reset_tickets():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/restart', methods=['POST'])
+@require_api_token
 def restart_bot_endpoint():
     """Reseta tickets e agenda reinício completo do bot"""
     try:
@@ -2634,6 +2899,7 @@ def restart_bot_endpoint():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ticket/create', methods=['POST'])
+@require_api_token
 def create_ticket_panel():
     """Cria um novo ticket via painel"""
     try:
@@ -2697,6 +2963,7 @@ def create_ticket_panel():
 # ==================== ENDPOINTS DE ANÚNCIOS E CONTAS ====================
 
 @app.route('/api/bot/announcement/send', methods=['POST'])
+@require_api_token
 def api_send_announcement():
     """API: Envia anúncio para o canal especificado"""
     try:
@@ -2743,6 +3010,7 @@ def api_send_announcement():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/bot/account/post', methods=['POST'])
+@require_api_token
 def api_post_account():
     """API: Posta anúncio de conta no Discord"""
     try:
