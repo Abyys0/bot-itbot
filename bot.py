@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from collections import deque, defaultdict
 import sys
 import time
+import re
 
 # Keep-alive e painel web integrado
 from flask import Flask, jsonify, request, send_from_directory
@@ -388,6 +389,14 @@ class SatoruSecurity:
     MESSAGE_THRESHOLD = 7
     TIMEOUT_MINUTES = 15
     LOCKDOWN_DURATION_MINUTES = 8
+    NEW_ACCOUNT_MAX_DAYS = 7
+    MENTION_THRESHOLD = 6
+    LINK_THRESHOLD = 3
+    LINK_WINDOW_SECONDS = 6
+    SUSPECT_ESCALATION_THRESHOLD = 3
+    GLOBAL_SLOWMODE_SECONDS = 8
+    MAX_COOLDOWN_CHANNELS = 6
+    LINK_REGEX = re.compile(r'https?://\S+', re.IGNORECASE)
 
     def __init__(self, bot_instance: commands.Bot):
         self.bot = bot_instance
@@ -396,6 +405,9 @@ class SatoruSecurity:
         self.lockdown_until = None
         self.join_events = deque()
         self.message_events = defaultdict(deque)
+        self.link_events = defaultdict(deque)
+        self.suspect_scores = defaultdict(int)
+        self.cooldown_channels = set()
 
     async def activate(self, ctx):
         if self.active:
@@ -440,6 +452,103 @@ class SatoruSecurity:
         while history and (now - history[0]).total_seconds() > window_seconds:
             history.popleft()
 
+    def _is_account_new(self, member: discord.Member) -> bool:
+        if not member.created_at:
+            return False
+        account_age = discord.utils.utcnow() - member.created_at
+        return account_age < timedelta(days=self.NEW_ACCOUNT_MAX_DAYS)
+
+    async def _flag_suspect(self, member: discord.Member, reason: str, immediate: bool = False):
+        if not member or not member.guild:
+            return
+
+        self.suspect_scores[member.id] += 1
+        score = self.suspect_scores[member.id]
+
+        await self._log_event(
+            member.guild,
+            "👁️ Usuário monitorado",
+            f"{member.mention} marcado como suspeito ({score}/{self.SUSPECT_ESCALATION_THRESHOLD}). Motivo: {reason}.",
+            COLORS["warning"]
+        )
+
+        if immediate or score >= self.SUSPECT_ESCALATION_THRESHOLD:
+            self.suspect_scores[member.id] = 0
+            await self._apply_emergency_action(member, f"Suspeito reincidente: {reason}")
+
+    def _record_link_events(self, author_id: int, link_count: int) -> int:
+        history = self.link_events[author_id]
+        now = datetime.utcnow()
+        for _ in range(max(link_count, 1)):
+            history.append(now)
+        self._trim_history(history, self.LINK_WINDOW_SECONDS)
+        return len(history)
+
+    async def _apply_global_cooldown(self, guild: discord.Guild):
+        if not guild:
+            return
+
+        self.cooldown_channels.clear()
+        for channel in guild.text_channels:
+            if len(self.cooldown_channels) >= self.MAX_COOLDOWN_CHANNELS:
+                break
+
+            perms = channel.permissions_for(guild.default_role)
+            if not perms.send_messages or channel.slowmode_delay >= self.GLOBAL_SLOWMODE_SECONDS:
+                continue
+
+            try:
+                await channel.edit(
+                    slowmode_delay=self.GLOBAL_SLOWMODE_SECONDS,
+                    reason="Satoru: Lockdown preventivo"
+                )
+                self.cooldown_channels.add(channel.id)
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+
+        if self.cooldown_channels:
+            await self._log_event(
+                guild,
+                "⛔ Cooldown global aplicado",
+                f"{len(self.cooldown_channels)} canais públicos receberam slowmode de {self.GLOBAL_SLOWMODE_SECONDS}s.",
+                COLORS["warning"]
+            )
+
+    async def _restore_channel_slowmodes(self, guild: discord.Guild):
+        if not self.cooldown_channels or not guild:
+            return
+
+        restored = 0
+        for channel_id in list(self.cooldown_channels):
+            channel = guild.get_channel(channel_id)
+            if not channel:
+                continue
+
+            try:
+                await channel.edit(slowmode_delay=0, reason="Satoru: Lockdown encerrado")
+                restored += 1
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+
+        self.cooldown_channels.clear()
+
+        if restored:
+            await self._log_event(
+                guild,
+                "✅ Cooldown revertido",
+                f"Slowmode removido de {restored} canais após o fim do lockdown.",
+                COLORS["success"]
+            )
+
+    async def _on_lockdown_finished(self, guild: discord.Guild):
+        await self._restore_channel_slowmodes(guild)
+        await self._log_event(
+            guild,
+            "✅ Lockdown encerrado",
+            "O bloqueio automático foi encerrado por tempo expirado.",
+            COLORS["success"]
+        )
+
     async def handle_member_join(self, member: discord.Member) -> bool:
         if not self.active or member.bot or member.guild is None:
             return False
@@ -458,6 +567,13 @@ class SatoruSecurity:
             await self._trigger_lockdown(member.guild, "Entrada massiva detectada")
             await self._apply_emergency_action(member, "Raid detectada (entradas em massa)")
             return True
+
+        if self._is_account_new(member):
+            account_age = discord.utils.utcnow() - member.created_at
+            reason = f"Conta criada há {account_age.days} dia(s)"
+            await self._flag_suspect(member, reason, immediate=self.lockdown_active)
+            if self.lockdown_active:
+                return True
 
         return False
 
@@ -486,7 +602,34 @@ class SatoruSecurity:
 
             await self._apply_emergency_action(message.author, "Envio massivo de mensagens")
             self.message_events.pop(message.author.id, None)
+            self.link_events.pop(message.author.id, None)
+            return
 
+        mention_count = len(message.mentions)
+        if message.mention_everyone:
+            mention_count += self.MENTION_THRESHOLD
+
+        if mention_count >= self.MENTION_THRESHOLD:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            await self._flag_suspect(message.author, "Menções em massa", immediate=True)
+            self.message_events.pop(message.author.id, None)
+
+
+        links_found = self.LINK_REGEX.findall(message.content or "")
+        if links_found:
+            burst = self._record_link_events(message.author.id, len(links_found))
+            if burst >= self.LINK_THRESHOLD:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                await self._flag_suspect(message.author, "Spam de links suspeitos")
+                self.link_events.pop(message.author.id, None)
+                self.message_events.pop(message.author.id, None)
+                return
     def _refresh_lockdown(self, guild: discord.Guild):
         if not self.lockdown_active:
             return
@@ -494,14 +637,7 @@ class SatoruSecurity:
         if self.lockdown_until and datetime.utcnow() > self.lockdown_until:
             self.lockdown_active = False
             self.lockdown_until = None
-            asyncio.create_task(
-                self._log_event(
-                    guild,
-                    "✅ Lockdown encerrado",
-                    "O bloqueio automático foi encerrado por tempo expirado.",
-                    COLORS["success"]
-                )
-            )
+            asyncio.create_task(self._on_lockdown_finished(guild))
 
     async def _apply_emergency_action(self, member: discord.Member, reason: str):
         action = None
@@ -536,6 +672,7 @@ class SatoruSecurity:
             f"{reason}. Novos membros serão temporariamente silenciados pelos próximos {self.LOCKDOWN_DURATION_MINUTES} minutos.",
             COLORS["error"]
         )
+        await self._apply_global_cooldown(guild)
 
     async def _log_event(self, guild: discord.Guild, title: str, description: str, color: int):
         if not guild:
@@ -570,6 +707,18 @@ class SatoruSecurity:
                 name="Termina em",
                 value=f"<t:{int(self.lockdown_until.timestamp())}:R>",
                 inline=False
+            )
+        if self.cooldown_channels:
+            embed.add_field(
+                name="Canais em slowmode",
+                value=str(len(self.cooldown_channels)),
+                inline=True
+            )
+        if self.suspect_scores:
+            embed.add_field(
+                name="Suspeitos monitorados",
+                value=str(len(self.suspect_scores)),
+                inline=True
             )
         embed.set_footer(text="Satoru mantém o servidor protegido contra raids")
         return embed

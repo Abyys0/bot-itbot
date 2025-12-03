@@ -55,6 +55,10 @@ Um bot de Discord completo para gerenciar tickets de suporte, vendas de contas, 
 ✅ `!satoru_status` mostra a situação atual do monitoramento
 ✅ Bloqueia rajadas de mensagens e surtos de novos membros automaticamente
 ✅ Ativa lockdown temporário, aplicando timeout/kick apenas em contas suspeitas
+✅ Marca contas muito novas como suspeitas quando entram em períodos de alerta
+✅ Detecta e remove mensagens com menções ou links em massa antes que virem spam
+✅ Em lockdown aplica slowmode automático nos canais públicos e reverte ao finalizar
+✅ Mantém lista inteligente de suspeitos, escalando punição quando há reincidência
 
 ## 🚀 Instalação
 
