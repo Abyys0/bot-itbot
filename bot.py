@@ -2684,62 +2684,222 @@ async def painel_mod(ctx):
     except Exception as e:
         await ctx.send(f"❌ Erro ao criar painel: {e}", delete_after=5)
 
-@bot.command(name="nova_loja")
+@bot.command(name="clear_void")
 @commands.has_permissions(administrator=True)
-async def nova_loja(ctx, confirmar: str = None):
-    """Cria uma loja profissional do zero (APAGA TUDO EXCETO CARGOS!)"""
+async def clear_void(ctx, confirmar: str = None):
+    """APAGA TUDO do servidor e cria backup automático (Apenas para o dono resetar servidor)"""
     
-    # Aviso de segurança
+    # Aviso de segurança extremo
     if confirmar != "CONFIRMAR":
         embed = discord.Embed(
-            title="⚠️ ATENÇÃO - COMANDO DESTRUTIVO!",
+            title="🚨 ATENÇÃO - COMANDO EXTREMAMENTE DESTRUTIVO!",
             description="""
             **Este comando irá:**
             ❌ Deletar TODAS as categorias
             ❌ Deletar TODOS os canais (texto e voz)
-            ✅ Manter todos os cargos
-            ✅ Criar estrutura profissional de loja Roblox
-            ✅ Configurar painéis automaticamente
+            ❌ Deletar TODOS os cargos (exceto @everyone)
+            ❌ Deletar TODOS os emojis personalizados
+            ✅ Criar backup automático antes de apagar
             
-            **ANTES DE USAR:**
-            1️⃣ Faça um backup: `!backup_loja`
-            2️⃣ Se não gostar, restaure: `!restaurar_backup <arquivo> confirmar`
+            **⚠️ O SERVIDOR FICARÁ COMPLETAMENTE VAZIO!**
+            
+            Use `!criar_nova_loja` depois para recriar a estrutura.
             
             **⚠️ ESTA AÇÃO NÃO PODE SER DESFEITA SEM BACKUP!**
             
             Para confirmar, use:
-            `!nova_loja CONFIRMAR`
+            `!clear_void CONFIRMAR`
             """,
             color=0xff0000
         )
-        embed.set_footer(text="⚠️ LEIA COM ATENÇÃO ANTES DE CONFIRMAR!")
+        embed.set_footer(text="⚠️ LEIA COM ATENÇÃO! ESTE COMANDO APAGA TUDO!")
         await ctx.send(embed=embed)
         return
     
-    # Verificar se há backup recente
-    backups = backup_manager.list_backups()
-    has_recent_backup = False
+    # Criar backup automático primeiro
+    try:
+        backup_msg = await ctx.send(
+            embed=discord.Embed(
+                title="💾 Criando backup de segurança...",
+                description="Salvando estado atual antes de limpar o servidor...",
+                color=COLORS["info"]
+            )
+        )
+        
+        success, filename, backup_data = await backup_manager.create_backup(ctx.guild)
+        
+        if not success:
+            await backup_msg.edit(
+                embed=discord.Embed(
+                    title="❌ Erro ao criar backup",
+                    description=f"Não foi possível criar o backup: {backup_data}\n\nOperação cancelada por segurança.",
+                    color=COLORS["error"]
+                )
+            )
+            return
+        
+        await backup_msg.edit(
+            embed=discord.Embed(
+                title="✅ Backup criado com sucesso",
+                description=f"Backup salvo: `{filename}`\n\nIniciando limpeza do servidor...",
+                color=COLORS["success"]
+            )
+        )
+    except Exception as e:
+        await ctx.send(f"❌ Erro ao criar backup: {e}\n\nOperação cancelada.")
+        return
     
-    if backups:
-        from datetime import datetime, timedelta
-        latest_backup = backups[-1]
-        backup_date = datetime.fromisoformat(latest_backup['created_at'])
-        if datetime.now() - backup_date < timedelta(days=1):
-            has_recent_backup = True
-    
-    if not has_recent_backup:
-        embed = discord.Embed(
-            title="⚠️ AVISO: SEM BACKUP RECENTE!",
+    # Mensagem de progresso
+    progress_msg = await ctx.send(
+        embed=discord.Embed(
+            title="🗑️ Limpando Servidor...",
             description="""
-            Você não tem um backup recente (últimas 24h).
+            **Progresso:**
+            ⏳ Deletando canais...
+            ⏸️ Deletando categorias...
+            ⏸️ Deletando cargos...
+            ⏸️ Deletando emojis...
             
-            **É ALTAMENTE RECOMENDADO fazer um backup antes!**
-            
-            Deseja continuar mesmo assim?
-            • `!backup_loja` - Criar backup primeiro (RECOMENDADO)
-            • `!nova_loja CONFIRMAR FORCAR` - Continuar sem backup (NÃO RECOMENDADO)
+            **⚠️ NÃO INTERROMPA O PROCESSO!**
+            Isso pode levar alguns minutos...
             """,
             color=0xff0000
+        )
+    )
+    
+    deleted_stats = {
+        'channels': 0,
+        'categories': 0,
+        'roles': 0,
+        'emojis': 0
+    }
+    
+    try:
+        # Deletar todos os canais
+        for channel in ctx.guild.channels:
+            try:
+                await channel.delete()
+                if isinstance(channel, discord.CategoryChannel):
+                    deleted_stats['categories'] += 1
+                else:
+                    deleted_stats['channels'] += 1
+            except:
+                pass
+        
+        # Atualizar progresso
+        await progress_msg.edit(
+            embed=discord.Embed(
+                title="🗑️ Limpando Servidor...",
+                description="""
+                **Progresso:**
+                ✅ Canais deletados
+                ✅ Categorias deletadas
+                ⏳ Deletando cargos...
+                ⏸️ Deletando emojis...
+                """,
+                color=0xff0000
+            )
+        )
+        
+        # Deletar todos os cargos (exceto @everyone e cargos gerenciados)
+        for role in ctx.guild.roles:
+            if role.name != "@everyone" and not role.managed and not role.is_bot_managed():
+                try:
+                    await role.delete()
+                    deleted_stats['roles'] += 1
+                except:
+                    pass
+        
+        # Atualizar progresso
+        await progress_msg.edit(
+            embed=discord.Embed(
+                title="🗑️ Limpando Servidor...",
+                description="""
+                **Progresso:**
+                ✅ Canais deletados
+                ✅ Categorias deletadas
+                ✅ Cargos deletados
+                ⏳ Deletando emojis...
+                """,
+                color=0xff0000
+            )
+        )
+        
+        # Deletar todos os emojis
+        for emoji in ctx.guild.emojis:
+            try:
+                await emoji.delete()
+                deleted_stats['emojis'] += 1
+            except:
+                pass
+        
+        # Criar canal temporário para comunicação
+        temp_channel = await ctx.guild.create_text_channel("🔧-comandos-admin")
+        
+        # Mensagem final de sucesso
+        success_embed = discord.Embed(
+            title="✅ Servidor Limpo com Sucesso!",
+            description=f"""
+            **🗑️ Tudo foi removido!**
+            
+            📊 **Estatísticas:**
+            📝 Canais deletados: {deleted_stats['channels']}
+            📂 Categorias deletadas: {deleted_stats['categories']}
+            🎭 Cargos deletados: {deleted_stats['roles']}
+            😀 Emojis deletados: {deleted_stats['emojis']}
+            
+            💾 **Backup:** `{filename}`
+            
+            **Próximos passos:**
+            • Use `!criar_nova_loja CONFIRMAR` para criar estrutura nova
+            • Ou use `!restaurar_backup {filename} confirmar` para reverter
+            
+            ⚠️ Este canal será deletado ao criar nova loja.
+            """,
+            color=COLORS["success"],
+            timestamp=discord.utils.utcnow()
+        )
+        success_embed.set_footer(text=f"Executado por {ctx.author.display_name}")
+        
+        await temp_channel.send(embed=success_embed)
+        logger.info(f"Clear void executado por {ctx.author} ({ctx.author.id}) - Backup: {filename}")
+        
+    except Exception as e:
+        error_embed = discord.Embed(
+            title="❌ Erro durante limpeza",
+            description=f"```{str(e)}```\n\nO backup foi salvo: `{filename}`",
+            color=COLORS["error"]
+        )
+        try:
+            await progress_msg.edit(embed=error_embed)
+        except:
+            pass
+        logger.error(f"Erro no clear_void: {e}")
+
+
+@bot.command(name="criar_nova_loja")
+@commands.has_permissions(administrator=True)
+async def criar_nova_loja(ctx, confirmar: str = None):
+    """Cria uma loja profissional completa após clear_void"""
+    
+    # Aviso de segurança
+    if confirmar != "CONFIRMAR":
+        embed = discord.Embed(
+            title="🏗️ Criar Nova Loja",
+            description="""
+            **Este comando irá:**
+            ✅ Criar estrutura profissional completa
+            ✅ Criar todos os cargos necessários
+            ✅ Criar categorias organizadas
+            ✅ Criar canais com permissões
+            ✅ Configurar painéis automaticamente
+            
+            **Recomendado usar após `!clear_void`**
+            
+            Para confirmar, use:
+            `!criar_nova_loja CONFIRMAR`
+            """,
+            color=COLORS["info"]
         )
         await ctx.send(embed=embed)
         return
@@ -2749,7 +2909,7 @@ async def nova_loja(ctx, confirmar: str = None):
         title="🏗️ Criando Nova Loja Profissional...",
         description="""
         **Progresso:**
-        ⏳ Fase 1: Limpando servidor...
+        ⏳ Fase 1: Criando cargos...
         ⏸️ Fase 2: Criando estrutura...
         ⏸️ Fase 3: Configurando painéis...
         
