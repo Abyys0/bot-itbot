@@ -154,8 +154,7 @@ def add_account():
             return jsonify({'success': False, 'error': 'Campos obrigatórios faltando'})
         
         accounts = _read_accounts_file()
-        
-        # Criar nova conta
+
         new_account = {
             'id': _generate_account_id(accounts),
             'title': title,
@@ -168,55 +167,20 @@ def add_account():
             'available': True,
             'created_at': datetime.now().isoformat()
         }
-        
+
         accounts.append(new_account)
+
+        success, announce_message, metadata = _announce_account(new_account)
+        if success and metadata:
+            new_account['message_id'] = metadata['message_id']
+            new_account['channel_id'] = metadata['channel_id']
+        else:
+            new_account['available'] = False
+            new_account['status'] = 'unavailable'
+
         _write_accounts_file(accounts)
-        
-        # Postar no Discord
-        async def post_to_discord():
-            try:
-                from config import load_channel_ids
-                config = load_channel_ids()
-                accounts_channel_id = config.get('accounts_channel_id', 0)
-                
-                if accounts_channel_id == 0:
-                    return False, "Canal de contas não configurado"
-                
-                channel = bot_instance.get_channel(accounts_channel_id)
-                if not channel:
-                    return False, "Canal de contas não encontrado"
-                
-                # Criar embed
-                embed = discord.Embed(
-                    title=f"🎮 {title}",
-                    description=description,
-                    color=0x00ff00
-                )
-                embed.add_field(name="💰 Preço", value=price, inline=True)
-                embed.add_field(name="📊 Status", value="✅ Disponível", inline=True)
-                if info:
-                    embed.add_field(name="ℹ️ Informações", value=info, inline=False)
-                if image_url:
-                    embed.set_thumbnail(url=image_url)
-                embed.set_footer(text=f"ID: {new_account['id']}")
-                
-                # Criar botão de compra COM OS DADOS DA CONTA
-                view = BuyAccountView(str(new_account['id']), new_account)
-                await channel.send(embed=embed, view=view)
-                
-                return True, "Conta postada no Discord"
-            except Exception as e:
-                return False, str(e)
-        
-        if bot_instance:
-            try:
-                loop = bot_instance.loop
-                future = asyncio.run_coroutine_threadsafe(post_to_discord(), loop)
-                success, message = future.result(timeout=10)
-            except:
-                pass  # Continua mesmo se falhar postar no Discord
-        
-        return jsonify({'success': True, 'account': new_account})
+        response_payload = {'success': success, 'message': announce_message, 'account': new_account}
+        return jsonify(response_payload)
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -241,7 +205,7 @@ def delete_account(account_id):
 
 def _announce_account(account_data):
     if not bot_instance:
-        return False, "Bot não está conectado"
+        return False, "Bot não está conectado", None
 
     async def _post():
         try:
@@ -250,11 +214,11 @@ def _announce_account(account_data):
             accounts_channel_id = config.get('accounts_channel_id', 0)
 
             if accounts_channel_id == 0:
-                return False, "Canal de contas não configurado"
+                return False, "Canal de contas não configurado", None
 
             channel = bot_instance.get_channel(accounts_channel_id)
             if not channel:
-                return False, "Canal de contas não encontrado"
+                return False, "Canal de contas não encontrado", None
 
             embed = discord.Embed(
                 title=f"🎮 {account_data['title']}",
@@ -272,14 +236,48 @@ def _announce_account(account_data):
             embed.set_footer(text=f"ID: {account_data['id']}")
 
             view = BuyAccountView(str(account_data['id']), account_data)
-            await channel.send(embed=embed, view=view)
-            return True, "Conta anunciada com sucesso"
+            message = await channel.send(embed=embed, view=view)
+            metadata = {'message_id': message.id, 'channel_id': channel.id}
+            return True, "Conta anunciada com sucesso!", metadata
+        except Exception as exc:
+            return False, str(exc), None
+
+    try:
+        loop = bot_instance.loop
+        future = asyncio.run_coroutine_threadsafe(_post(), loop)
+        return future.result(timeout=10)
+    except Exception as exc:
+        return False, str(exc), None
+
+
+def _delete_account_message(account_data):
+    if not bot_instance:
+        return False, "Bot não está conectado"
+
+    message_id = account_data.get('message_id')
+    channel_id = account_data.get('channel_id')
+    if not message_id or not channel_id:
+        return False, "Nenhum anúncio associado a esta conta"
+
+    async def _delete():
+        try:
+            channel = bot_instance.get_channel(int(channel_id))
+            if not channel:
+                return False, "Canal do anúncio não encontrado"
+
+            try:
+                message = await channel.fetch_message(int(message_id))
+            except discord.NotFound:
+                return True, "Mensagem já removida anteriormente"
+
+            await message.delete()
+            return True, "Anúncio removido do canal"
         except Exception as exc:
             return False, str(exc)
 
     try:
         loop = bot_instance.loop
-        future = asyncio.run_coroutine_threadsafe(_post(), loop)
+        future = asyncio.run_coroutine_threadsafe(_delete(), loop)
         return future.result(timeout=10)
     except Exception as exc:
         return False, str(exc)
@@ -299,14 +297,32 @@ def toggle_account(account_id):
         account['available'] = not previous_state
         account['status'] = 'available' if account['available'] else 'unavailable'
 
-        _write_accounts_file(accounts)
-
+        success_flag = True
         message = 'Conta marcada como indisponível'
-        if account['available'] and not previous_state:
-            success, announce_msg = _announce_account(account)
-            message = announce_msg if success else f"Conta disponível, mas houve erro ao anunciar: {announce_msg}"
 
-        return jsonify({'success': True, 'available': account['available'], 'message': message})
+        if account['available'] and not previous_state:
+            success, announce_msg, metadata = _announce_account(account)
+            if success and metadata:
+                account['message_id'] = metadata['message_id']
+                account['channel_id'] = metadata['channel_id']
+                message = announce_msg
+            else:
+                account['available'] = False
+                account['status'] = 'unavailable'
+                success_flag = False
+                message = f"Erro ao anunciar: {announce_msg}"
+        elif not account['available'] and previous_state:
+            success, removal_msg = _delete_account_message(account)
+            if success:
+                account.pop('message_id', None)
+                account.pop('channel_id', None)
+                message = removal_msg
+            else:
+                success_flag = False
+                message = f"Conta indisponível, mas não foi possível remover o anúncio: {removal_msg}"
+
+        _write_accounts_file(accounts)
+        return jsonify({'success': success_flag, 'available': account['available'], 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -989,76 +1005,41 @@ class CloseTicketModal(discord.ui.Modal, title="Fechar Ticket"):
                     ),
                     ephemeral=True
                 )
-            else:
-                await interaction.response.send_message(
-                    embed=discord.Embed(
-                        title="❌ Erro ao fechar",
-                        description="Não foi possível fechar o ticket. Tente novamente ou verifique os logs.",
-                        color=COLORS["error"]
-                    ),
-                    ephemeral=True
-                )
+                        accounts = _read_accounts_file()
+                        new_account = {
+                            'id': _generate_account_id(accounts),
+                            'title': self.title_input.value,
+                            'description': self.description_input.value,
+                            'price': self.price_input.value,
+                            'image_url': self.image_input.value or '',
+                            'info': self.info_input.value or '',
+                            'additional_info': self.info_input.value or '',
+                            'status': 'available',
+                            'available': True,
+                            'created_at': datetime.now().isoformat()
+                        }
 
+                        accounts.append(new_account)
 
-class AddMemberModal(discord.ui.Modal, title="Adicionar Membro"):
-    """Modal para adicionar um membro ao ticket"""
-    
-    member_id = discord.ui.TextInput(
-        label="ID do Membro",
-        style=discord.TextStyle.short,
-        placeholder="Cole o ID do usuário aqui...",
-        required=True,
-        max_length=20
-    )
-    
-    def __init__(self, view_instance):
-        super().__init__()
-        self.view_instance = view_instance
-    
-    async def on_submit(self, interaction: discord.Interaction):
-        """Quando o modal é enviado"""
-        await self.view_instance.process_add_member(interaction, self.member_id.value)
+                        success, announce_message, metadata = _announce_account(new_account)
+                        if success and metadata:
+                            new_account['message_id'] = metadata['message_id']
+                            new_account['channel_id'] = metadata['channel_id']
+                        else:
+                            new_account['available'] = False
+                            new_account['status'] = 'unavailable'
 
-# ==================== MODALS PARA PIX ====================
+                        _write_accounts_file(accounts)
 
-class ConfirmPaymentModal(discord.ui.Modal, title="Confirmar Pagamento"):
-    """Modal para staff confirmar pagamento"""
-    
-    payment_id_input = discord.ui.TextInput(
-        label="ID do Pagamento",
-        style=discord.TextStyle.short,
-        placeholder="Digite o ID do pagamento (ex: a1b2c3d4)",
-        required=True,
-        max_length=20
-    )
-    
-    def __init__(self):
-        super().__init__()
-    
-    async def on_submit(self, interaction: discord.Interaction):
-        """Quando o modal é enviado"""
-        payment_id = self.payment_id_input.value.strip()
-        
-        # Confirma o pagamento
-        success, message = pix_manager.confirm_payment(payment_id, str(interaction.user.id))
-        
-        if success:
-            payment = pix_manager.get_payment(payment_id)
-            
-            embed = discord.Embed(
-                title="✅ Pagamento Confirmado!",
-                description=f"O pagamento **{payment_id}** foi confirmado com sucesso!",
-                color=COLORS["success"],
-                timestamp=discord.utils.utcnow()
-            )
-            embed.add_field(name="💰 Valor", value=f"R$ {payment['amount']:.2f}", inline=True)
-            embed.add_field(name="👤 Cliente", value=f"<@{payment['user_id']}>", inline=True)
-            embed.add_field(name="🎮 Conta", value=payment['account_title'], inline=False)
-            embed.add_field(name="✅ Confirmado por", value=interaction.user.mention, inline=False)
-            
-            await interaction.response.send_message(embed=embed)
-            
-            # Tenta notificar o cliente via DM
+                        color = discord.Color.green() if success else discord.Color.red()
+                        await interaction.response.send_message(
+                            embed=discord.Embed(
+                                title="Conta registrada",
+                                description=announce_message,
+                                color=color
+                            ),
+                            ephemeral=True
+                        )
             try:
                 user = await bot.fetch_user(int(payment['user_id']))
                 dm_embed = discord.Embed(

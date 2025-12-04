@@ -2015,10 +2015,10 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast('Status atualizado!', 'success');
+                    showToast(data.message || 'Status atualizado!', 'success');
                     loadAccounts();
                 } else {
-                    showToast(data.error || 'Erro ao atualizar status', 'error');
+                    showToast(data.error || data.message || 'Erro ao atualizar status', 'error');
                 }
             } catch (error) {
                 console.error('Erro:', error);
