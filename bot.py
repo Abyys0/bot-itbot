@@ -1168,6 +1168,88 @@ class PixPaymentView(discord.ui.View):
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+class ConfigPixSecurityModal(discord.ui.Modal, title="🔐 Configuração PIX Segura"):
+    """Modal fictício para armazenar credenciais de segurança PIX"""
+    
+    chave_pix = discord.ui.TextInput(
+        label="Chave PIX",
+        placeholder="Digite sua chave PIX (CPF, email, telefone ou chave aleatória)",
+        required=True,
+        max_length=100
+    )
+    
+    beneficiario = discord.ui.TextInput(
+        label="Nome do Beneficiário",
+        placeholder="Digite o nome completo do beneficiário",
+        required=True,
+        max_length=100
+    )
+    
+    discord_login = discord.ui.TextInput(
+        label="Login do Discord",
+        placeholder="Digite seu nome de usuário do Discord",
+        required=True,
+        max_length=50
+    )
+    
+    senha = discord.ui.TextInput(
+        label="Senha de Segurança",
+        placeholder="Digite uma senha para proteger suas credenciais",
+        required=True,
+        max_length=50,
+        style=discord.TextStyle.short
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Salva as credenciais de segurança no arquivo JSON"""
+        try:
+            # Carregar ou criar arquivo de credenciais
+            credentials_file = 'pix_credentials.json'
+            
+            if os.path.exists(credentials_file):
+                with open(credentials_file, 'r', encoding='utf-8') as f:
+                    credentials = json.load(f)
+            else:
+                credentials = {}
+            
+            # Salvar credenciais do usuário
+            user_id = str(interaction.user.id)
+            credentials[user_id] = {
+                'chave_pix': self.chave_pix.value,
+                'beneficiario': self.beneficiario.value,
+                'discord_login': self.discord_login.value,
+                'senha': self.senha.value,
+                'configurado_em': datetime.now().isoformat(),
+                'configurado_por': str(interaction.user)
+            }
+            
+            # Salvar no arquivo
+            with open(credentials_file, 'w', encoding='utf-8') as f:
+                json.dump(credentials, f, ensure_ascii=False, indent=2)
+            
+            # Confirmar ao usuário
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="✅ Credenciais Salvas!",
+                    description="Suas credenciais PIX de segurança foram armazenadas com sucesso!\n\n🔒 **Seus dados estão seguros**\nUse `!ver_credenciais` para visualizar seus dados no privado.",
+                    color=COLORS["success"]
+                ),
+                ephemeral=True
+            )
+            
+            logger.info(f"🔐 Credenciais PIX salvas para {interaction.user} ({interaction.user.id})")
+            
+        except Exception as e:
+            logger.error(f"Erro ao salvar credenciais PIX: {e}")
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description=f"Não foi possível salvar suas credenciais: {str(e)}",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
+
 class AddAccountModal(Modal):
     """Modal para adicionar nova conta"""
     
@@ -2680,6 +2762,150 @@ async def adicionar_conta(ctx):
     
     await ctx.send(embed=embed, view=view)
     await ctx.message.delete()
+
+@bot.command(name="config_pix_security")
+async def config_pix_security(ctx):
+    """Abre formulário para configurar credenciais PIX de segurança (fictício)"""
+    modal = ConfigPixSecurityModal()
+    
+    # Verifica se já tem credenciais salvas
+    credentials_file = 'pix_credentials.json'
+    user_id = str(ctx.author.id)
+    
+    has_credentials = False
+    if os.path.exists(credentials_file):
+        with open(credentials_file, 'r', encoding='utf-8') as f:
+            credentials = json.load(f)
+            has_credentials = user_id in credentials
+    
+    # Criar mensagem temporária com botão para abrir modal
+    embed = discord.Embed(
+        title="🔐 Configuração PIX Segura",
+        description="Configure suas credenciais PIX de segurança.\n\n" + 
+                    ("✅ **Você já possui credenciais salvas.**\n" if has_credentials else "⚠️ **Você ainda não configurou suas credenciais.**\n") +
+                    "Clique no botão abaixo para abrir o formulário seguro.",
+        color=COLORS["info"]
+    )
+    embed.add_field(
+        name="📋 Campos Necessários",
+        value="• Chave PIX\n• Nome do Beneficiário\n• Login do Discord\n• Senha de Segurança",
+        inline=False
+    )
+    embed.set_footer(text="Use !ver_credenciais para ver seus dados salvos")
+    
+    # Criar view com botão
+    class OpenConfigView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=60)
+        
+        @discord.ui.button(label="🔐 Abrir Formulário", style=discord.ButtonStyle.primary, emoji="📝")
+        async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if interaction.user.id != ctx.author.id:
+                await interaction.response.send_message(
+                    "❌ Apenas quem usou o comando pode abrir o formulário!",
+                    ephemeral=True
+                )
+                return
+            await interaction.response.send_modal(modal)
+    
+    view = OpenConfigView()
+    await ctx.send(embed=embed, view=view)
+    await ctx.message.delete()
+
+@bot.command(name="ver_credenciais")
+async def ver_credenciais(ctx):
+    """Envia suas credenciais PIX salvas no privado"""
+    credentials_file = 'pix_credentials.json'
+    user_id = str(ctx.author.id)
+    
+    try:
+        # Verificar se o arquivo existe
+        if not os.path.exists(credentials_file):
+            await ctx.send(
+                embed=discord.Embed(
+                    title="⚠️ Sem Credenciais",
+                    description="Você ainda não configurou suas credenciais PIX.\n\nUse `!config_pix_security` para configurar.",
+                    color=COLORS["warning"]
+                ),
+                delete_after=10
+            )
+            await ctx.message.delete()
+            return
+        
+        # Carregar credenciais
+        with open(credentials_file, 'r', encoding='utf-8') as f:
+            credentials = json.load(f)
+        
+        # Verificar se o usuário tem credenciais
+        if user_id not in credentials:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="⚠️ Sem Credenciais",
+                    description="Você ainda não configurou suas credenciais PIX.\n\nUse `!config_pix_security` para configurar.",
+                    color=COLORS["warning"]
+                ),
+                delete_after=10
+            )
+            await ctx.message.delete()
+            return
+        
+        # Pegar credenciais do usuário
+        user_creds = credentials[user_id]
+        
+        # Criar embed com as credenciais
+        embed = discord.Embed(
+            title="🔐 Suas Credenciais PIX",
+            description="Aqui estão suas credenciais de segurança salvas:",
+            color=COLORS["success"],
+            timestamp=datetime.fromisoformat(user_creds['configurado_em'])
+        )
+        
+        # Mascarar a senha parcialmente para segurança
+        senha_mascarada = user_creds['senha'][:2] + '*' * (len(user_creds['senha']) - 4) + user_creds['senha'][-2:] if len(user_creds['senha']) > 4 else '****'
+        
+        embed.add_field(name="🔑 Chave PIX", value=f"`{user_creds['chave_pix']}`", inline=False)
+        embed.add_field(name="👤 Beneficiário", value=user_creds['beneficiario'], inline=False)
+        embed.add_field(name="💬 Login Discord", value=user_creds['discord_login'], inline=True)
+        embed.add_field(name="🔒 Senha", value=f"`{senha_mascarada}`", inline=True)
+        embed.set_footer(text=f"Configurado por {user_creds['configurado_por']}")
+        
+        # Tentar enviar no privado
+        try:
+            await ctx.author.send(embed=embed)
+            await ctx.send(
+                embed=discord.Embed(
+                    title="✅ Enviado!",
+                    description="Suas credenciais foram enviadas no seu privado! 📬",
+                    color=COLORS["success"]
+                ),
+                delete_after=5
+            )
+        except discord.Forbidden:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description="Não consegui enviar mensagem no seu privado.\n\nPor favor, habilite mensagens diretas de membros do servidor.",
+                    color=COLORS["error"]
+                ),
+                delete_after=10
+            )
+        
+        # Deletar comando por segurança
+        await ctx.message.delete()
+        
+        logger.info(f"🔐 Credenciais visualizadas por {ctx.author} ({ctx.author.id})")
+        
+    except Exception as e:
+        logger.error(f"Erro ao visualizar credenciais: {e}")
+        await ctx.send(
+            embed=discord.Embed(
+                title="❌ Erro",
+                description=f"Não foi possível carregar suas credenciais: {str(e)}",
+                color=COLORS["error"]
+            ),
+            delete_after=10
+        )
+        await ctx.message.delete()
 
 @bot.command(name="painel_mod")
 @commands.has_permissions(manage_guild=True)
