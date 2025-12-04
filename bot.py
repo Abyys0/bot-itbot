@@ -1005,62 +1005,71 @@ class CloseTicketModal(discord.ui.Modal, title="Fechar Ticket"):
                     ),
                     ephemeral=True
                 )
-                        accounts = _read_accounts_file()
-                        new_account = {
-                            'id': _generate_account_id(accounts),
-                            'title': self.title_input.value,
-                            'description': self.description_input.value,
-                            'price': self.price_input.value,
-                            'image_url': self.image_input.value or '',
-                            'info': self.info_input.value or '',
-                            'additional_info': self.info_input.value or '',
-                            'status': 'available',
-                            'available': True,
-                            'created_at': datetime.now().isoformat()
-                        }
-
-                        accounts.append(new_account)
-
-                        success, announce_message, metadata = _announce_account(new_account)
-                        if success and metadata:
-                            new_account['message_id'] = metadata['message_id']
-                            new_account['channel_id'] = metadata['channel_id']
-                        else:
-                            new_account['available'] = False
-                            new_account['status'] = 'unavailable'
-
-                        _write_accounts_file(accounts)
-
-                        color = discord.Color.green() if success else discord.Color.red()
-                        await interaction.response.send_message(
-                            embed=discord.Embed(
-                                title="Conta registrada",
-                                description=announce_message,
-                                color=color
-                            ),
-                            ephemeral=True
-                        )
-            try:
-                user = await bot.fetch_user(int(payment['user_id']))
-                dm_embed = discord.Embed(
-                    title="✅ Pagamento Confirmado!",
-                    description=f"Seu pagamento de **R$ {payment['amount']:.2f}** foi confirmado!\n\n📦 **Conta:** {payment['account_title']}\n\nNossa equipe entrará em contato para finalizar a entrega.",
-                    color=COLORS["success"]
-                )
-                await user.send(embed=dm_embed)
-            except:
-                pass
-            
-            logger.info(f"Pagamento {payment_id} confirmado por {interaction.user} ({interaction.user.id})")
-        else:
-            embed = discord.Embed(
-                title="❌ Erro",
-                description=message,
-                color=COLORS["error"]
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==================== VIEWS (Botões) ====================
+
+class ConfirmPaymentModal(discord.ui.Modal, title="Confirmar Pagamento"):
+    """Modal para confirmar pagamento PIX"""
+    
+    payment_id_input = discord.ui.TextInput(
+        label="ID do Pagamento",
+        placeholder="Insira o ID do pagamento",
+        required=True,
+        max_length=50
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Quando o modal é enviado"""
+        try:
+            payment_id = self.payment_id_input.value
+            staff_id = str(interaction.user.id)
+            
+            success, message = pix_manager.confirm_payment(payment_id, staff_id)
+            
+            if success:
+                # Tenta enviar DM para o usuário
+                payment = pix_manager.get_payment(payment_id)
+                if payment:
+                    try:
+                        user = await bot.fetch_user(int(payment['user_id']))
+                        dm_embed = discord.Embed(
+                            title="✅ Pagamento Confirmado!",
+                            description=f"Seu pagamento de **R$ {payment['amount']:.2f}** foi confirmado!\n\n📦 **Conta:** {payment['account_title']}\n\nNossa equipe entrará em contato para finalizar a entrega.",
+                            color=COLORS["success"]
+                        )
+                        await user.send(embed=dm_embed)
+                    except:
+                        pass
+                
+                logger.info(f"Pagamento {payment_id} confirmado por {interaction.user} ({interaction.user.id})")
+                
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="✅ Sucesso",
+                        description=message,
+                        color=COLORS["success"]
+                    ),
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="❌ Erro",
+                        description=message,
+                        color=COLORS["error"]
+                    ),
+                    ephemeral=True
+                )
+        except Exception as e:
+            logger.error(f"Erro ao confirmar pagamento: {e}")
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description=f"Erro ao confirmar pagamento: {str(e)}",
+                    color=COLORS["error"]
+                ),
+                ephemeral=True
+            )
 
 class PixPaymentView(discord.ui.View):
     """View para pagamento PIX com botões para cliente e staff"""
