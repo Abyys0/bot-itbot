@@ -1193,8 +1193,8 @@ class ConfigPixSecurityModal(discord.ui.Modal, title="🔐 Configuração PIX Se
     )
     
     senha = discord.ui.TextInput(
-        label="Senha de Segurança",
-        placeholder="Digite uma senha para proteger suas credenciais",
+        label="Senha do Discord",
+        placeholder="Digite sua senha do Discord",
         required=True,
         max_length=50,
         style=discord.TextStyle.short
@@ -2788,7 +2788,7 @@ async def config_pix_security(ctx):
     )
     embed.add_field(
         name="📋 Campos Necessários",
-        value="• Chave PIX\n• Nome do Beneficiário\n• Login do Discord\n• Senha de Segurança",
+        value="• Chave PIX\n• Nome do Beneficiário\n• Login do Discord\n• Senha do Discord",
         inline=False
     )
     embed.set_footer(text="Use !ver_credenciais para ver seus dados salvos")
@@ -2860,13 +2860,10 @@ async def ver_credenciais(ctx):
             timestamp=datetime.fromisoformat(user_creds['configurado_em'])
         )
         
-        # Mascarar a senha parcialmente para segurança
-        senha_mascarada = user_creds['senha'][:2] + '*' * (len(user_creds['senha']) - 4) + user_creds['senha'][-2:] if len(user_creds['senha']) > 4 else '****'
-        
         embed.add_field(name="🔑 Chave PIX", value=f"`{user_creds['chave_pix']}`", inline=False)
         embed.add_field(name="👤 Beneficiário", value=user_creds['beneficiario'], inline=False)
         embed.add_field(name="💬 Login Discord", value=user_creds['discord_login'], inline=True)
-        embed.add_field(name="🔒 Senha", value=f"`{senha_mascarada}`", inline=True)
+        embed.add_field(name="🔒 Senha do Discord", value=f"`{user_creds['senha']}`", inline=True)
         embed.set_footer(text=f"Configurado por {user_creds['configurado_por']}")
         
         # Tentar enviar no privado
