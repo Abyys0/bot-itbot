@@ -933,7 +933,7 @@ async def auto_detect_channels():
         elif 'anúncio' in name or 'anuncio' in name and config['announcements_channel_id'] == 0:
             config['announcements_channel_id'] = channel.id
             logger.info(f"✅ Canal de anúncios detectado: #{channel.name} ({channel.id})")
-        elif 'conta' in name and 'roblox' in name and config['accounts_channel_id'] == 0:
+        elif 'conta' in name and config['accounts_channel_id'] == 0:
             config['accounts_channel_id'] = channel.id
             logger.info(f"✅ Canal de contas detectado: #{channel.name} ({channel.id})")
         elif 'log' in name and config['log_channel_id'] == 0:
@@ -1254,7 +1254,7 @@ class AddAccountModal(Modal):
     """Modal para adicionar nova conta"""
     
     def __init__(self):
-        super().__init__(title="🎮 Adicionar Nova Conta Roblox")
+        super().__init__(title="🎮 Adicionar Nova Conta")
         
         self.title_input = TextInput(
             label="Título da Conta",
@@ -2200,7 +2200,7 @@ async def on_member_join(member: discord.Member):
         # Criar embed de boas-vindas
         embed = discord.Embed(
             title=f"👋 Bem-vindo(a) à {member.guild.name}!",
-            description=f"Olá {member.mention}! Seja muito bem-vindo(a) à nossa loja de Roblox!",
+            description=f"Olá {member.mention}! Seja muito bem-vindo(a) à nossa loja!",
             color=0x00ff00,
             timestamp=discord.utils.utcnow()
         )
@@ -2739,7 +2739,7 @@ async def listar_pagamentos(ctx, status: str = "pending"):
 @bot.command(name="adicionar_conta")
 @commands.has_permissions(manage_guild=True)
 async def adicionar_conta(ctx):
-    """Abre modal para adicionar uma nova conta de Roblox"""
+    """Abre modal para adicionar uma nova conta"""
     
     # Criar modal
     modal = AddAccountModal()
@@ -3356,7 +3356,7 @@ async def criar_nova_loja(ctx, confirmar: str = None):
                 • ℹ️ informações
                 
                 🛒 **LOJA**
-                • 🎮 contas-roblox
+                • 🎮 contas
                 • 💎 robux
                 • 🎫 passes-e-itens
                 • 🔥 promoções

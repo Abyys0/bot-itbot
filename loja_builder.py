@@ -7,7 +7,7 @@ import os
 logger = logging.getLogger(__name__)
 
 class LojaBuilder:
-    """Construtor de loja profissional para Roblox"""
+    """Construtor de loja profissional"""
     
     def __init__(self, bot):
         self.bot = bot
@@ -120,7 +120,7 @@ class LojaBuilder:
         ch_info = await guild.create_text_channel(
             "ℹ️│informações",
             category=cat_info,
-            topic="Informações úteis sobre a loja e Roblox"
+            topic="Informações úteis sobre a loja"
         )
         await ch_info.set_permissions(everyone_role, send_messages=False)
         self.created_channels['info'] = ch_info
@@ -220,7 +220,7 @@ class LojaBuilder:
         ch_chat = await guild.create_text_channel(
             "💭│chat-geral",
             category=cat_community,
-            topic="Converse sobre Roblox e outros assuntos"
+            topic="Converse e interaja com outros membros"
         )
         self.created_channels['chat'] = ch_chat
         results['created']['channels'] += 1
@@ -229,7 +229,7 @@ class LojaBuilder:
         ch_memes = await guild.create_text_channel(
             "😂│memes",
             category=cat_community,
-            topic="Compartilhe seus memes favoritos de Roblox"
+            topic="Compartilhe seus memes favoritos"
         )
         self.created_channels['memes'] = ch_memes
         results['created']['channels'] += 1
@@ -238,7 +238,7 @@ class LojaBuilder:
         ch_media = await guild.create_text_channel(
             "📸│mídia",
             category=cat_community,
-            topic="Compartilhe prints, vídeos e arte do Roblox"
+            topic="Compartilhe prints, vídeos e arte"
         )
         self.created_channels['media'] = ch_media
         results['created']['channels'] += 1
@@ -261,7 +261,7 @@ class LojaBuilder:
         results['created']['channels'] += 1
         
         ch_voice2 = await guild.create_voice_channel(
-            "🎮│Jogando Roblox",
+            "🎮│Sala Geral",
             category=cat_community
         )
         results['created']['channels'] += 1
@@ -319,12 +319,12 @@ class LojaBuilder:
         # ==================== PAINEL: BOAS-VINDAS ====================
         if 'welcome' in self.created_channels:
             embed = discord.Embed(
-                title="🎮 Bem-vindo à Melhor Loja de Roblox!",
+                title="🎮 Bem-vindo à Nossa Loja!",
                 description="""
                 Olá! Seja muito bem-vindo à nossa comunidade! 👋
                 
                 Aqui você encontra:
-                🎮 **Contas Roblox** premium e seguras
+                🎮 **Contas** premium e seguras
                 💎 **Robux** com os melhores preços
                 🎫 **Passes e Itens** exclusivos
                 🔥 **Promoções** imperdíveis
@@ -471,7 +471,7 @@ class LojaBuilder:
             )
             embed.add_field(
                 name="🏪 Sobre Nós",
-                value="Somos a loja mais confiável de Roblox! Anos de experiência no mercado.",
+                value="Somos uma loja confiável! Anos de experiência no mercado.",
                 inline=False
             )
             embed.add_field(
@@ -496,7 +496,7 @@ class LojaBuilder:
         # ==================== PAINEL: CONTAS ====================
         if 'accounts' in self.created_channels:
             embed = discord.Embed(
-                title="🎮 Contas Roblox Disponíveis",
+                title="🎮 Contas Disponíveis",
                 description="""
                 **Contas premium prontas para uso!**
                 
