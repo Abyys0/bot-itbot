@@ -295,45 +295,112 @@ class IABrain:
         return "Entendi! Como posso ajudar você melhor com isso? 🤔"
     
     def _answer_question(self, question: str) -> str:
-        """Responde perguntas"""
+        """Responde perguntas - adaptado ao modo atual"""
         question_lower = question.lower()
+        mode_data = self._get_current_mode_data()
+        emoji = mode_data['emoji']
         
         # Perguntas sobre o bot
-        if "quem é você" in question_lower or "quem e você" in question_lower:
-            return f"Sou o {self.personality['name']}, uma inteligência artificial criada para ajudar neste servidor! Posso conversar, responder perguntas e até buscar informações na internet para você. 🤖"
+        if "quem é você" in question_lower or "quem e você" in question_lower or "quem e voce" in question_lower:
+            mode_intros = {
+                "gaming": f"Sou o {mode_data['name']}! {emoji} Uma IA gamer pronta para falar sobre jogos, FiveM, servidores e tudo mais!",
+                "technical": f"Sou o {mode_data['name']}! {emoji} Especializado em programação, debugging e soluções técnicas!",
+                "casual": f"Opa! Sou o {mode_data['name']}! {emoji} Aqui pra trocar ideia e conversar de boa!",
+                "researcher": f"Sou o {mode_data['name']}! {emoji} Posso pesquisar qualquer coisa na internet para você!",
+                "helper": f"Sou o {mode_data['name']}! {emoji} Estou aqui para te ajudar com paciência e dedicação!",
+                "creative": f"Sou o {mode_data['name']}! {emoji} Vamos criar coisas incríveis juntos!",
+                "default": f"Sou o {self.personality['name']}, uma inteligência artificial! {emoji} Posso conversar, responder perguntas e buscar informações na internet!"
+            }
+            return mode_intros.get(self.current_mode, mode_intros["default"])
         
-        if "o que você faz" in question_lower or "o que voce faz" in question_lower:
-            return "Eu posso:\n• Conversar naturalmente com você\n• Responder perguntas sobre diversos assuntos\n• Buscar informações na internet\n• Ajudar com comandos do servidor\n• E muito mais! Basta me perguntar!"
+        if "o que você faz" in question_lower or "o que voce faz" in question_lower or "oque voce faz" in question_lower:
+            mode_skills = {
+                "gaming": f"Posso:\n{emoji} Falar sobre FiveM, GTA RP e mods\n{emoji} Dar dicas de jogos\n{emoji} Ajudar com servidores\n{emoji} Conversar sobre gameplay!",
+                "technical": f"Posso:\n{emoji} Ajudar com código e debugging\n{emoji} Explicar conceitos técnicos\n{emoji} Resolver problemas de programação\n{emoji} Sugerir arquiteturas e soluções!",
+                "researcher": f"Posso:\n{emoji} Pesquisar qualquer assunto na internet\n{emoji} Buscar informações atualizadas\n{emoji} Encontrar dados e referências\n{emoji} Explicar tópicos complexos!",
+                "casual": f"Posso:\n{emoji} Conversar de boa sobre qualquer coisa\n{emoji} Responder suas dúvidas\n{emoji} Trocar ideias e opiniões\n{emoji} Ser seu parceiro de papo!",
+                "default": f"Eu posso:\n{emoji} Conversar naturalmente\n{emoji} Responder perguntas\n{emoji} Buscar informações na internet\n{emoji} Adaptar minha personalidade ao contexto!"
+            }
+            return mode_skills.get(self.current_mode, mode_skills["default"])
         
         if "como você funciona" in question_lower or "como voce funciona" in question_lower:
-            return "Sou uma IA com sistema de processamento de linguagem natural! Analiso suas mensagens, entendo o contexto e gero respostas inteligentes. Também posso buscar informações em tempo real na internet! 🧠"
+            return f"Sou uma IA com processamento de linguagem natural! {emoji} Analiso suas mensagens, detecto o contexto, mudo minha personalidade automaticamente e gero respostas inteligentes. Também busco informações em tempo real na internet!"
         
-        # Resposta genérica para outras perguntas
-        return "Hmm, essa é uma boa pergunta! 🤔 Para respostas mais precisas, você pode me pedir para buscar na internet. Exemplo: 'pesquise sobre [assunto]'"
+        # Resposta genérica para outras perguntas - adaptada ao modo
+        generic_responses = {
+            "gaming": f"Boa pergunta! {emoji} Quer que eu pesquise sobre isso? Ou prefere que eu te conte o que sei sobre jogos?",
+            "technical": f"Hmm, questão técnica interessante! {emoji} Posso pesquisar documentação detalhada sobre isso se quiser!",
+            "researcher": f"Excelente pergunta! {emoji} Vou pesquisar informações completas sobre isso para você!",
+            "casual": f"Boa pergunta! {emoji} Não sei de cabeça, mas posso pesquisar para você!",
+            "default": f"Boa pergunta! {emoji} Para respostas precisas, posso pesquisar na internet. Exemplo: 'pesquise sobre [assunto]'"
+        }
+        return generic_responses.get(self.current_mode, generic_responses["default"])
     
     def _casual_response(self, message: str) -> str:
-        """Resposta casual para conversas"""
+        """Resposta casual para conversas - adaptada ao modo atual"""
         message_lower = message.lower()
+        mode_data = self._get_current_mode_data()
+        emoji = mode_data['emoji']
         
         # Reações a palavras-chave
         if any(word in message_lower for word in ['legal', 'bacana', 'show', 'top', 'massa']):
-            return "Que bom que você gostou! 😊 Estou aqui para ajudar sempre!"
+            responses = {
+                "gaming": f"Isso aí, player! {emoji} Bora pro próximo nível!",
+                "technical": f"Ótimo! {emoji} Vamos continuar com o desenvolvimento!",
+                "casual": f"Massa demais! {emoji} Adorei conversar com você!",
+                "creative": f"Que inspirador! {emoji} Vamos criar mais coisas legais!",
+                "default": f"Que bom que você gostou! {emoji} Estou aqui para ajudar sempre!"
+            }
+            return responses.get(self.current_mode, responses["default"])
         
         if any(word in message_lower for word in ['não', 'nao', 'errado', 'ruim']):
-            return "Entendo... Vou melhorar! Como posso ajudar de forma diferente? 🤔"
+            return f"Entendo... Vou melhorar! Como posso ajudar de forma diferente? {emoji}"
         
         if any(word in message_lower for word in ['ajuda', 'help', 'socorro']):
-            return "Claro! Estou aqui para ajudar! O que você precisa? Pode me fazer perguntas ou pedir para eu buscar algo na internet!"
+            return f"Claro! Estou aqui para ajudar! {emoji} O que você precisa?"
         
-        # Resposta padrão
-        responses = [
-            "Interessante! Conte-me mais sobre isso.",
-            "Entendo. Como posso ajudar você com isso?",
-            "Hmm, entendi. Quer que eu busque mais informações sobre isso?",
-            "Legal! Tem algo específico que você gostaria de saber?"
-        ]
+        # Resposta padrão adaptada ao modo
+        responses = {
+            "gaming": [
+                f"Interessante! {emoji} Tá jogando algo legal?",
+                f"Show! {emoji} Conta mais sobre isso!",
+                f"Legal! {emoji} Quer saber mais sobre algum jogo?"
+            ],
+            "technical": [
+                f"Entendo. {emoji} Como posso ajudar tecnicamente com isso?",
+                f"Interessante. {emoji} Quer que eu analise isso em detalhes?",
+                f"Hmm, entendi. {emoji} Precisa de ajuda técnica?"
+            ],
+            "casual": [
+                f"Opa! {emoji} E aí, como tá sendo seu dia?",
+                f"Legal! {emoji} Bora trocar mais ideia!",
+                f"Show! {emoji} Conta mais dessa história!"
+            ],
+            "researcher": [
+                f"Interessante! {emoji} Quer que eu pesquise mais sobre isso?",
+                f"Hmm, entendi. {emoji} Posso buscar informações detalhadas se quiser!",
+                f"Curioso! {emoji} Vamos investigar isso juntos?"
+            ],
+            "helper": [
+                f"Entendo. {emoji} Deixa eu te ajudar com isso passo a passo!",
+                f"Tranquilo! {emoji} Vou te explicar com calma.",
+                f"Sem problema! {emoji} Estou aqui para facilitar isso para você!"
+            ],
+            "creative": [
+                f"Que ideia interessante! {emoji} Vamos desenvolver isso juntos?",
+                f"Legal! {emoji} Isso pode virar algo incrível!",
+                f"Inspirador! {emoji} Tem mais ideias assim?"
+            ],
+            "default": [
+                f"Interessante! {emoji} Conte-me mais sobre isso.",
+                f"Entendo. {emoji} Como posso ajudar você com isso?",
+                f"Legal! {emoji} Tem algo específico que você gostaria de saber?"
+            ]
+        }
+        
         import random
-        return random.choice(responses)
+        mode_responses = responses.get(self.current_mode, responses["default"])
+        return random.choice(mode_responses)
     
     async def process_message(self, message: str, user_id: str, username: str) -> Tuple[str, Optional[Dict], Optional[str]]:
         """
