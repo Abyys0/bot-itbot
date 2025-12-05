@@ -2265,11 +2265,22 @@ async def on_message(message: discord.Message):
                 async with message.channel.typing():
                     try:
                         # Processa mensagem pela IA
-                        response, search_data = await ia_brain.process_message(
+                        response, search_data, mode_change = await ia_brain.process_message(
                             content,
                             str(message.author.id),
                             str(message.author)
                         )
+                        
+                        # Se houve mudança de modo, envia notificação
+                        if mode_change:
+                            mode_embed = discord.Embed(
+                                description=mode_change,
+                                color=COLORS["success"]
+                            )
+                            await message.channel.send(embed=mode_embed)
+                        
+                        # Pega dados do modo atual para o embed
+                        mode_data = ia_brain._get_current_mode_data()
                         
                         # Cria embed para resposta
                         embed = discord.Embed(
@@ -2278,7 +2289,7 @@ async def on_message(message: discord.Message):
                             timestamp=discord.utils.utcnow()
                         )
                         embed.set_author(
-                            name=f"🤖 {ia_brain.personality['name']} respondendo para {message.author.display_name}",
+                            name=f"{mode_data['emoji']} {mode_data['name']} respondendo para {message.author.display_name}",
                             icon_url=bot.user.avatar.url if bot.user.avatar else None
                         )
                         
@@ -2286,6 +2297,9 @@ async def on_message(message: discord.Message):
                         if search_data and search_data.get("success"):
                             if search_data.get("abstract_url"):
                                 embed.set_footer(text="💡 Clique no link para saber mais")
+                        else:
+                            # Mostra o modo atual no footer
+                            embed.set_footer(text=f"Modo: {mode_data['name']} {mode_data['emoji']}")
                         
                         await message.reply(embed=embed, mention_author=False)
                         logger.info(f"🤖 IA respondeu para {message.author} em {message.channel}")

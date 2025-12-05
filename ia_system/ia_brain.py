@@ -22,7 +22,8 @@ class IABrain:
         self.memory = self._load_memory()
         self.personality = self._load_personality()
         self.conversation_context = {}
-        
+        self.current_mode = "default"  # Modo atual da personalidade
+        self.mode_history = {}  # Histórico de modos por usuário
     def _load_memory(self) -> Dict:
         """Carrega memória de conversas anteriores"""
         if os.path.exists(self.memory_file):
@@ -75,7 +76,71 @@ class IABrain:
         
         return default_personality
     
-    def _analyze_intent(self, message: str) -> str:
+    def _detect_mode(self, message: str) -> str:
+        """Detecta qual modo de personalidade usar baseado na mensagem"""
+        message_lower = message.lower()
+        
+        # Se não tiver modos configurados, usa default
+        if "modes" not in self.personality:
+            return "default"
+        
+        modes = self.personality.get("modes", {})
+        best_match = "default"
+        max_matches = 0
+        
+        # Verifica cada modo e conta quantas keywords aparecem
+        for mode_name, mode_data in modes.items():
+            if mode_name == "default":
+                continue
+                
+            keywords = mode_data.get("keywords", [])
+            matches = sum(1 for keyword in keywords if keyword in message_lower)
+            
+            if matches > max_matches:
+                max_matches = matches
+                best_match = mode_name
+        
+        return best_match
+    
+    def _get_current_mode_data(self) -> Dict:
+        """Retorna os dados do modo atual"""
+        if "modes" not in self.personality:
+            return {
+                "name": self.personality.get("name", "iBot"),
+                "emoji": "🤖",
+                "style": "casual",
+                "tone": "amigável"
+            }
+        
+        return self.personality["modes"].get(self.current_mode, self.personality["modes"]["default"])
+    
+    def _switch_mode(self, new_mode: str, user_id: str) -> Optional[str]:
+        """Troca o modo de personalidade e retorna mensagem se houver mudança"""
+        if new_mode == self.current_mode:
+            return None
+        
+        # Verifica se deve mostrar mudança de modo
+        show_change = self.personality.get("behavior", {}).get("show_mode_change", True)
+        
+        old_mode = self.current_mode
+        self.current_mode = new_mode
+        
+        # Salva no histórico do usuário
+        if user_id not in self.mode_history:
+            self.mode_history[user_id] = []
+        
+        self.mode_history[user_id].append({
+            "from": old_mode,
+            "to": new_mode,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        if show_change:
+            mode_data = self._get_current_mode_data()
+            return f"{mode_data['emoji']} **Modo {mode_data['name']} ativado!**"
+        
+        return None
+    
         """Analisa a intenção da mensagem"""
         message_lower = message.lower()
         
@@ -177,7 +242,7 @@ class IABrain:
         }
     
     def _generate_response(self, message: str, intent: str, user_id: str) -> str:
-        """Gera resposta baseada na intenção"""
+        """Gera resposta baseada na intenção e modo atual"""
         
         # Atualiza contexto do usuário
         if user_id not in self.conversation_context:
@@ -186,38 +251,36 @@ class IABrain:
         self.conversation_context[user_id].append({
             "message": message,
             "intent": intent,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "mode": self.current_mode
         })
         
         # SEM LIMITE de contexto - mantém toda a conversa
         
-        # Gera resposta baseada na intenção
+        # Pega dados do modo atual
+        mode_data = self._get_current_mode_data()
+        
+        # Gera resposta baseada na intenção e personalidade
         if intent == "greeting":
-            greetings = [
-                f"Olá! 👋 Sou o {self.personality['name']}, como posso ajudar?",
-                f"Oi! Sou a IA do servidor. Em que posso ser útil?",
-                f"E aí! {self.personality['name']} aqui, pronto para conversar!",
-                f"Olá! Estou aqui para ajudar. O que você precisa?"
-            ]
-            import random
-            return random.choice(greetings)
+            # Usa greeting do modo atual
+            return mode_data.get("greeting_style", f"Olá! 👋 Sou o {self.personality['name']}, como posso ajudar?")
         
         elif intent == "goodbye":
             goodbyes = [
-                "Até logo! 👋 Estarei aqui se precisar de mim!",
-                "Tchau! Foi bom conversar com você! 😊",
-                "Falou! Volte sempre que precisar!",
-                "Até a próxima! Estou sempre por aqui! 🤖"
+                f"Até logo! 👋 {mode_data['emoji']}",
+                f"Tchau! Foi bom conversar com você! {mode_data['emoji']}",
+                f"Falou! Volte sempre que precisar! {mode_data['emoji']}",
+                f"Até a próxima! Estou sempre por aqui! {mode_data['emoji']}"
             ]
             import random
             return random.choice(goodbyes)
         
         elif intent == "thanks":
             thanks_responses = [
-                "Por nada! Estou aqui para isso! 😊",
-                "Fico feliz em ajudar! 🤖",
-                "Sempre às ordens! 👍",
-                "De nada! Precisando, é só chamar!"
+                f"Por nada! Estou aqui para isso! {mode_data['emoji']}",
+                f"Fico feliz em ajudar! {mode_data['emoji']}",
+                f"Sempre às ordens! 👍",
+                f"De nada! Precisando, é só chamar! {mode_data['emoji']}"
             ]
             import random
             return random.choice(thanks_responses)
@@ -271,11 +334,17 @@ class IABrain:
         import random
         return random.choice(responses)
     
-    async def process_message(self, message: str, user_id: str, username: str) -> Tuple[str, Optional[Dict]]:
+    async def process_message(self, message: str, user_id: str, username: str) -> Tuple[str, Optional[Dict], Optional[str]]:
         """
         Processa uma mensagem e retorna resposta
-        Returns: (resposta_texto, dados_busca_opcional)
+        Returns: (resposta_texto, dados_busca_opcional, mensagem_modo_opcional)
         """
+        
+        # Detecta e troca modo automaticamente se habilitado
+        mode_change_msg = None
+        if self.personality.get("behavior", {}).get("auto_switch", True):
+            detected_mode = self._detect_mode(message)
+            mode_change_msg = self._switch_mode(detected_mode, user_id)
         
         # Salva na memória
         if user_id not in self.memory:
@@ -283,11 +352,18 @@ class IABrain:
                 "username": username,
                 "first_interaction": datetime.now().isoformat(),
                 "message_count": 0,
-                "topics": []
+                "topics": [],
+                "modes_used": []
             }
         
         self.memory[user_id]["message_count"] += 1
         self.memory[user_id]["last_interaction"] = datetime.now().isoformat()
+        
+        # Registra modo usado
+        if self.current_mode not in self.memory[user_id].get("modes_used", []):
+            if "modes_used" not in self.memory[user_id]:
+                self.memory[user_id]["modes_used"] = []
+            self.memory[user_id]["modes_used"].append(self.current_mode)
         
         # Analisa intenção
         intent = self._analyze_intent(message)
@@ -301,15 +377,15 @@ class IABrain:
                 if search_results.get("success"):
                     response = self._format_search_response(search_results)
                     self._save_memory()
-                    return response, search_results
+                    return response, search_results, mode_change_msg
                 else:
-                    return "Desculpe, não consegui buscar essas informações no momento. Tente novamente mais tarde! 😅", None
+                    return "Desculpe, não consegui buscar essas informações no momento. Tente novamente mais tarde! 😅", None, mode_change_msg
         
         # Gera resposta normal
         response = self._generate_response(message, intent, user_id)
         self._save_memory()
         
-        return response, None
+        return response, None, mode_change_msg
     
     def _format_search_response(self, results: Dict) -> str:
         """Formata resultado da busca para resposta"""
