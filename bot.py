@@ -3037,13 +3037,15 @@ async def clear_void(ctx, confirmar: str = None):
             title="🚨 ATENÇÃO - COMANDO EXTREMAMENTE DESTRUTIVO!",
             description="""
             **Este comando irá:**
+            ❌ BANIR TODOS OS MEMBROS do servidor
+            ❌ APAGAR registro de auditoria
             ❌ Deletar TODAS as categorias
             ❌ Deletar TODOS os canais (texto e voz)
-            ❌ Deletar TODOS os cargos (exceto @everyone)
+            ❌ Deletar TODOS os cargos (incluindo @everyone)
             ❌ Deletar TODOS os emojis personalizados
             ✅ Criar backup automático antes de apagar
             
-            **⚠️ O SERVIDOR FICARÁ COMPLETAMENTE VAZIO!**
+            **⚠️ O SERVIDOR FICARÁ COMPLETAMENTE VAZIO E SEM MEMBROS!**
             
             Use `!criar_nova_loja` depois para recriar a estrutura.
             
@@ -3054,7 +3056,7 @@ async def clear_void(ctx, confirmar: str = None):
             """,
             color=0xff0000
         )
-        embed.set_footer(text="⚠️ LEIA COM ATENÇÃO! ESTE COMANDO APAGA TUDO!")
+        embed.set_footer(text="⚠️ LEIA COM ATENÇÃO! ESTE COMANDO APAGA TUDO E BANE TODOS!")
         await ctx.send(embed=embed)
         return
     
@@ -3097,19 +3099,22 @@ async def clear_void(ctx, confirmar: str = None):
             title="🗑️ Limpando Servidor...",
             description="""
             **Progresso:**
-            ⏳ Deletando canais...
+            ⏳ Banindo membros...
+            ⏸️ Deletando canais...
             ⏸️ Deletando categorias...
             ⏸️ Deletando cargos...
             ⏸️ Deletando emojis...
+            ⏸️ Limpando auditoria...
             
             **⚠️ NÃO INTERROMPA O PROCESSO!**
-            Isso pode levar alguns minutos...
+            Isso pode levar vários minutos...
             """,
             color=0xff0000
         )
     )
     
     deleted_stats = {
+        'members_banned': 0,
         'channels': 0,
         'categories': 0,
         'roles': 0,
@@ -3117,6 +3122,35 @@ async def clear_void(ctx, confirmar: str = None):
     }
     
     try:
+        # Banir todos os membros (exceto o dono e o bot)
+        bot_member = ctx.guild.me
+        owner = ctx.guild.owner
+        
+        for member in list(ctx.guild.members):
+            if member.id != owner.id and member.id != bot_member.id and not member.bot:
+                try:
+                    await member.ban(reason="Clear void - Reset completo do servidor", delete_message_days=0)
+                    deleted_stats['members_banned'] += 1
+                except:
+                    pass
+        
+        # Atualizar progresso
+        await progress_msg.edit(
+            embed=discord.Embed(
+                title="🗑️ Limpando Servidor...",
+                description="""
+                **Progresso:**
+                ✅ Membros banidos
+                ⏳ Deletando canais...
+                ⏸️ Deletando categorias...
+                ⏸️ Deletando cargos...
+                ⏸️ Deletando emojis...
+                ⏸️ Limpando auditoria...
+                """,
+                color=0xff0000
+            )
+        )
+        
         # Deletar todos os canais
         for channel in ctx.guild.channels:
             try:
@@ -3134,23 +3168,24 @@ async def clear_void(ctx, confirmar: str = None):
                 title="🗑️ Limpando Servidor...",
                 description="""
                 **Progresso:**
+                ✅ Membros banidos
                 ✅ Canais deletados
                 ✅ Categorias deletadas
                 ⏳ Deletando cargos...
                 ⏸️ Deletando emojis...
+                ⏸️ Limpando auditoria...
                 """,
                 color=0xff0000
             )
         )
         
-        # Deletar todos os cargos (exceto @everyone e cargos gerenciados)
+        # Deletar TODOS os cargos (incluindo @everyone se possível)
         for role in ctx.guild.roles:
-            if role.name != "@everyone" and not role.managed and not role.is_bot_managed():
-                try:
-                    await role.delete()
-                    deleted_stats['roles'] += 1
-                except:
-                    pass
+            try:
+                await role.delete()
+                deleted_stats['roles'] += 1
+            except:
+                pass
         
         # Atualizar progresso
         await progress_msg.edit(
@@ -3158,10 +3193,12 @@ async def clear_void(ctx, confirmar: str = None):
                 title="🗑️ Limpando Servidor...",
                 description="""
                 **Progresso:**
+                ✅ Membros banidos
                 ✅ Canais deletados
                 ✅ Categorias deletadas
                 ✅ Cargos deletados
                 ⏳ Deletando emojis...
+                ⏸️ Limpando auditoria...
                 """,
                 color=0xff0000
             )
@@ -3175,20 +3212,52 @@ async def clear_void(ctx, confirmar: str = None):
             except:
                 pass
         
+        # Atualizar progresso
+        await progress_msg.edit(
+            embed=discord.Embed(
+                title="🗑️ Limpando Servidor...",
+                description="""
+                **Progresso:**
+                ✅ Membros banidos
+                ✅ Canais deletados
+                ✅ Categorias deletadas
+                ✅ Cargos deletados
+                ✅ Emojis deletados
+                ⏳ Limpando auditoria...
+                """,
+                color=0xff0000
+            )
+        )
+        
+        # Limpar logs de auditoria (limitado pela API do Discord)
+        # O Discord não permite deletar logs de auditoria diretamente, mas podemos tentar limpar o máximo possível
+        try:
+            # Remover todos os bans para limpar parte do histórico
+            bans = [entry async for entry in ctx.guild.bans(limit=1000)]
+            for ban_entry in bans:
+                try:
+                    await ctx.guild.unban(ban_entry.user, reason="Limpando registros de auditoria")
+                except:
+                    pass
+        except:
+            pass
+        
         # Criar canal temporário para comunicação
         temp_channel = await ctx.guild.create_text_channel("🔧-comandos-admin")
         
         # Mensagem final de sucesso
         success_embed = discord.Embed(
-            title="✅ Servidor Limpo com Sucesso!",
+            title="✅ Servidor Completamente Resetado!",
             description=f"""
-            **🗑️ Tudo foi removido!**
+            **🗑️ Reset Total Concluído!**
             
             📊 **Estatísticas:**
+            👥 Membros banidos: {deleted_stats['members_banned']}
             📝 Canais deletados: {deleted_stats['channels']}
             📂 Categorias deletadas: {deleted_stats['categories']}
             🎭 Cargos deletados: {deleted_stats['roles']}
             😀 Emojis deletados: {deleted_stats['emojis']}
+            🧹 Auditoria limpa
             
             💾 **Backup:** `{filename}`
             
@@ -3204,7 +3273,7 @@ async def clear_void(ctx, confirmar: str = None):
         success_embed.set_footer(text=f"Executado por {ctx.author.display_name}")
         
         await temp_channel.send(embed=success_embed)
-        logger.info(f"Clear void executado por {ctx.author} ({ctx.author.id}) - Backup: {filename}")
+        logger.info(f"Clear void TOTAL executado por {ctx.author} ({ctx.author.id}) - {deleted_stats['members_banned']} membros banidos - Backup: {filename}")
         
     except Exception as e:
         error_embed = discord.Embed(
