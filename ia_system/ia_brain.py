@@ -141,6 +141,7 @@ class IABrain:
         
         return None
     
+    def _analyze_intent(self, message: str) -> str:
         """Analisa a intenção da mensagem"""
         message_lower = message.lower()
         
