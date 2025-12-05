@@ -145,13 +145,21 @@ class IABrain:
         """Analisa a intenção da mensagem"""
         message_lower = message.lower()
         
-        # Perguntas
-        if any(word in message_lower for word in ['?', 'como', 'quando', 'onde', 'por que', 'porque', 'qual', 'quem', 'o que']):
-            return "question"
-        
-        # Solicitação de busca
-        if any(word in message_lower for word in ['pesquise', 'busque', 'procure', 'encontre', 'pesquisar', 'buscar']):
+        # Solicitação de busca - VERIFICAR PRIMEIRO (prioridade)
+        if any(word in message_lower for word in [
+            'pesquise', 'busque', 'procure', 'encontre', 'pesquisar', 'buscar',
+            'procurar', 'encontrar', 'faça uma pesquisa', 'faz uma pesquisa',
+            'me fale sobre', 'fale sobre', 'me conte sobre', 'conte sobre',
+            'qual a história', 'qual a historia', 'me fala sobre', 'fala sobre'
+        ]):
             return "search"
+        
+        # Perguntas
+        if any(word in message_lower for word in ['?', 'como', 'quando', 'onde', 'por que', 'porque', 'qual', 'quem', 'o que', 'oque']):
+            # Se tem "o que é" ou "quem é", é busca
+            if any(phrase in message_lower for phrase in ['o que é', 'o que e', 'oque é', 'oque e', 'quem é', 'quem e']):
+                return "search"
+            return "question"
         
         # Saudação
         if any(word in message_lower for word in ['oi', 'olá', 'ola', 'hey', 'e ai', 'eai', 'bom dia', 'boa tarde', 'boa noite']):
@@ -172,20 +180,44 @@ class IABrain:
         """Extrai o termo de busca da mensagem"""
         message_lower = message.lower()
         
-        # Padrões comuns de busca
+        # Padrões comuns de busca - MELHORADOS
         patterns = [
-            r'pesquise?\s+(?:sobre\s+)?(?:por\s+)?(.+)',
-            r'busque?\s+(?:sobre\s+)?(?:por\s+)?(.+)',
-            r'procure?\s+(?:sobre\s+)?(?:por\s+)?(.+)',
-            r'encontre?\s+(?:sobre\s+)?(?:por\s+)?(.+)',
-            r'o que (?:é|e)\s+(.+)',
-            r'quem (?:é|e)\s+(.+)',
+            # "Faça uma pesquisa sobre X"
+            r'faça?\s+(?:uma\s+)?pesquisa\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'faz\s+(?:uma\s+)?pesquisa\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            # "Pesquise sobre X"
+            r'pesquise?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'pesquise?\s+(?:a\s+|o\s+)?(.+)',
+            # "Busque sobre X"
+            r'busque?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'busque?\s+(?:a\s+|o\s+)?(.+)',
+            # "Procure sobre X"
+            r'procure?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'procure?\s+(?:a\s+|o\s+)?(.+)',
+            # "Encontre sobre X"
+            r'encontre?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'encontre?\s+(?:a\s+|o\s+)?(.+)',
+            # "Me fale sobre X" / "Fale sobre X"
+            r'(?:me\s+)?fale?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'(?:me\s+)?fala?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            # "Me conte sobre X"
+            r'(?:me\s+)?conte?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            r'(?:me\s+)?conta?\s+sobre\s+(?:a\s+|o\s+)?(.+)',
+            # "Qual a história de X"
+            r'qual\s+(?:a\s+|o\s+)?hist[oó]ria\s+(?:de\s+|da\s+|do\s+)(.+)',
+            # "O que é X" / "Quem é X"
+            r'o\s+que\s+(?:é|e)\s+(?:a\s+|o\s+)?(.+)',
+            r'quem\s+(?:é|e)\s+(?:a\s+|o\s+)?(.+)',
+            r'oque\s+(?:é|e)\s+(?:a\s+|o\s+)?(.+)',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, message_lower)
             if match:
-                return match.group(1).strip()
+                query = match.group(1).strip()
+                # Remove pontuação do final
+                query = query.rstrip('?!.,;')
+                return query
         
         return None
     
