@@ -123,14 +123,18 @@ class IABrain:
         
         return None
     
-    async def search_internet(self, query: str) -> Dict[str, any]:
-        """Busca informações na internet"""
+    async def search_internet(self, query: str, deep_search: bool = True) -> Dict[str, any]:
+        """Busca informações na internet - SEM LIMITAÇÕES"""
         try:
             # Usando DuckDuckGo Instant Answer API (gratuita e sem chave)
             async with aiohttp.ClientSession() as session:
                 url = f"https://api.duckduckgo.com/?q={query}&format=json"
                 
-                async with session.get(url) as response:
+                # Adiciona parâmetros para busca mais profunda
+                if deep_search:
+                    url += "&no_redirect=1&no_html=1&skip_disambig=1"
+                
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status == 200:
                         data = await response.json()
                         
@@ -145,13 +149,21 @@ class IABrain:
                             "related_topics": []
                         }
                         
-                        # Extrair tópicos relacionados
-                        for topic in data.get("RelatedTopics", [])[:5]:
+                        # Extrair TODOS os tópicos relacionados - SEM LIMITE
+                        for topic in data.get("RelatedTopics", []):
                             if isinstance(topic, dict) and "Text" in topic:
                                 result["related_topics"].append({
                                     "text": topic.get("Text", ""),
                                     "url": topic.get("FirstURL", "")
                                 })
+                            # Suporte para subtópicos
+                            elif isinstance(topic, dict) and "Topics" in topic:
+                                for subtopic in topic["Topics"]:
+                                    if "Text" in subtopic:
+                                        result["related_topics"].append({
+                                            "text": subtopic.get("Text", ""),
+                                            "url": subtopic.get("FirstURL", "")
+                                        })
                         
                         return result
                     
@@ -177,9 +189,7 @@ class IABrain:
             "timestamp": datetime.now().isoformat()
         })
         
-        # Mantém apenas últimas 10 mensagens no contexto
-        if len(self.conversation_context[user_id]) > 10:
-            self.conversation_context[user_id] = self.conversation_context[user_id][-10:]
+        # SEM LIMITE de contexto - mantém toda a conversa
         
         # Gera resposta baseada na intenção
         if intent == "greeting":
@@ -309,11 +319,9 @@ class IABrain:
         if results.get("answer"):
             response += f"**Resposta:** {results['answer']}\n\n"
         
-        # Abstract/Resumo
+        # Abstract/Resumo - SEM LIMITE de caracteres
         if results.get("abstract_text"):
             abstract = results["abstract_text"]
-            if len(abstract) > 500:
-                abstract = abstract[:497] + "..."
             response += f"**Resumo:** {abstract}\n"
             
             if results.get("abstract_url"):
@@ -323,11 +331,11 @@ class IABrain:
         elif results.get("definition"):
             response += f"**Definição:** {results['definition']}\n"
         
-        # Tópicos relacionados
+        # Tópicos relacionados - TODOS, sem limitações
         if results.get("related_topics"):
             response += f"\n**📚 Tópicos Relacionados:**\n"
-            for i, topic in enumerate(results["related_topics"][:3], 1):
-                response += f"{i}. {topic['text'][:100]}...\n"
+            for i, topic in enumerate(results["related_topics"], 1):
+                response += f"{i}. {topic['text']}\n"
         
         if not results.get("answer") and not results.get("abstract_text") and not results.get("definition"):
             response += "Não encontrei informações detalhadas, mas você pode tentar pesquisar diretamente no Google ou DuckDuckGo! 😊"
